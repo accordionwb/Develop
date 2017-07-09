@@ -78,20 +78,20 @@ CHARACTER(256) :: ARG
 
 ! Optional arguments in the call sequence
 
-NARGS = IARGC()
-IF(NARGS.GT.0)THEN
-  DO I = 1, NARGS
-    CALL GETARG(I,ARG)
-    IF(ARG.EQ."-h".OR.ARG.EQ."-H")THEN
-      CALL USAGE2(f2aversion)
-      STOP
-    ENDIF
-    IF(ARG.EQ."-v".OR.ARG.EQ."-V")THEN
-      CALL VERSION2(f2aversion)
-      STOP
-    ENDIF
-  END DO
-ENDIF
+!NARGS = IARGC()
+!IF(NARGS.GT.0)THEN
+!  DO I = 1, NARGS
+!    CALL GETARG(I,ARG)
+!    IF(ARG.EQ."-h".OR.ARG.EQ."-H")THEN
+!      CALL USAGE2(f2aversion)
+!      STOP
+!    ENDIF
+!    IF(ARG.EQ."-v".OR.ARG.EQ."-V")THEN
+!      CALL VERSION2(f2aversion)
+!      STOP
+!    ENDIF
+!  END DO
+!ENDIF
 
 ! Set a few default values
 
@@ -1062,7 +1062,7 @@ CHARACTER(255), intent(in) :: f2aversion
 INTEGER :: lastchar
         
         
-WRITE(6,*)"fds2ascii ",trim(f2aversion)," ",TRIM(GITHASH_PP)
+!WRITE(6,*)"fds2ascii ",trim(f2aversion)," ",TRIM(GITHASH_PP)
 WRITE(6,*)""
 WRITE(6,*)"  Convert boundary, slice or plot3d data generated"
 WRITE(6,*)"  by FDS to an ascii spreadsheet file."
@@ -1078,21 +1078,21 @@ END SUBROUTINE USAGE2
 
 ! *********************** VERSION2 *******************************
 
-SUBROUTINE VERSION2(f2aversion)
-IMPLICIT NONE
+!SUBROUTINE VERSION2(f2aversion)
+!IMPLICIT NONE
 
-CHARACTER(255), intent(in) :: f2aversion
+!CHARACTER(255), intent(in) :: f2aversion
 
-CHARACTER(60) :: DATE
+!CHARACTER(60) :: DATE
 
-WRITE(6,'(/A/)')      ' fds2ascii'
-WRITE(6,'(A,A)')      ' Version          : ',TRIM(f2aversion)
-WRITE(6,'(A,A)')      ' Revision         : ',TRIM(GITHASH_PP)
-WRITE(6,'(A,A)')      ' Revision Date    : ',TRIM(GITDATE_PP)
-WRITE(6,'(A,A/)')     ' Compilation Date : ',TRIM(BUILDDATE_PP)
-
-
-END SUBROUTINE VERSION2
+!WRITE(6,'(/A/)')      ' fds2ascii'
+!WRITE(6,'(A,A)')      ' Version          : ',TRIM(f2aversion)
+!WRITE(6,'(A,A)')      ' Revision         : ',TRIM(GITHASH_PP)
+!WRITE(6,'(A,A)')      ' Revision Date    : ',TRIM(GITDATE_PP)
+!WRITE(6,'(A,A/)')     ' Compilation Date : ',TRIM(BUILDDATE_PP)
+!
+!
+!END SUBROUTINE VERSION2
 
 ! *********************** PARSE *******************************
 
