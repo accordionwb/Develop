@@ -49,7 +49,7 @@ gnu_osx_64 : $(OBJCTS)
 # ------------- Linux 64 ----------------
 #  64 bit linux
 
-intel_linux_64 : FFLAGS    = -O2 -m64 $(GITINFO)
+intel_linux_64 : FFLAGS    = -O2 -m64 
 intel_linux_64 : FC        = ifort
 intel_linux_64 : exe       = $(BIN)/fdspost
 
