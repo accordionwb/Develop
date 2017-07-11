@@ -1,868 +1,686 @@
-PROGRAM FDSPOST
-
-! Program to convert various FDS output files to ASCII
-
-IMPLICIT NONE
-
-INTERFACE
-SUBROUTINE PARSE(BUFFER,SB_TOKS,SE_TOKS,N_TOKS)
-IMPLICIT NONE
-CHARACTER(*), INTENT(INOUT) :: BUFFER
-INTEGER, DIMENSION(*), INTENT(OUT) :: SB_TOKS, SE_TOKS
-INTEGER, INTENT(OUT) :: N_TOKS
-END SUBROUTINE PARSE
-END INTERFACE
-
-CHARACTER(255), PARAMETER :: f2aversion='2.1.0'
-INTEGER, PARAMETER :: FB = SELECTED_REAL_KIND(6)
-INTEGER, PARAMETER :: FILE_DIM = 500
-INTEGER :: IERR, NMESHES, NM, NOC, I, J, K, L
-INTEGER :: IDUM, IFILE, NSAM, NV, MV
-INTEGER :: I1, I2, J1, J2, K1, K2, I3, J3, K3
-INTEGER :: I10, I20, J10, J20, K10, K20
-INTEGER :: NCOUNT, IOR_INPUT, NPATCH, IJBAR, JKBAR
-INTEGER :: II, NXP, NYP, NZP, N
-REAL(FB) :: XS, XF, YS, YF, ZS, ZF, TIME
-REAL(FB) :: D1, D2, D3, D4, TBEG, TEND
-CHARACTER(256) :: AUTO_SLICE_LABEL
-INTEGER :: AUTO_SLICE_FLAG, N_AUTO_SLICES, IAUTO, IZTEMP
-INTEGER, DIMENSION(1) :: IZMIN1
-INTEGER :: IZMIN
-INTEGER, DIMENSION(FILE_DIM) :: AUTO_SLICE_LISTS
-REAL(FB), DIMENSION(FILE_DIM) :: AUTO_SLICE_Z
-REAL(FB) :: AX1, AY1, AZ1, AZ2
-REAL(FB) :: EPS, ZMIN
- 
-TYPE MESH_TYPE
-   REAL(FB), POINTER, DIMENSION(:) :: X,Y,Z
-   REAL(FB) :: D1,D2,D3,D4
-   INTEGER :: IBAR,JBAR,KBAR,IERR,NXP,NYP,NZP
-END TYPE MESH_TYPE
- 
-TYPE (MESH_TYPE), DIMENSION(:), ALLOCATABLE, TARGET :: MESH
-TYPE(MESH_TYPE), POINTER :: M
- 
-REAL(FB), DIMENSION(60) :: SUM
-INTEGER, ALLOCATABLE, DIMENSION(:) :: IOR,I1B,I2B,J1B,J2B,K1B,K2B
-INTEGER, ALLOCATABLE, DIMENSION(:) :: AUTO_SLICES
-REAL(FB), ALLOCATABLE, DIMENSION(:,:,:,:) :: Q
-REAL(FB), ALLOCATABLE, DIMENSION(:,:,:) :: F
-LOGICAL, ALLOCATABLE, DIMENSION(:,:,:) :: ALREADY_USED
-LOGICAL :: NEW_PLOT3D=.TRUE.
-INTEGER IOR_SLCF
-CHARACTER(2) :: ANS
-CHARACTER(4) :: CHOICE
-CHARACTER(30) :: UNITJUNK
-CHARACTER(256) GRIDFILE,QNAME,CHID,QFILE,JUNK,FRMT,OUTFILE,SLCF_LABEL_DUMMY
-CHARACTER(256), DIMENSION(FILE_DIM) :: PL3D_FILE,SLCF_FILE,BNDF_FILE,SLCF_TEXT,BNDF_TEXT,SLCF_UNIT,BNDF_UNIT,SLCF_LABEL
-CHARACTER(256), DIMENSION(FILE_DIM) :: SLICE_LABELS
-CHARACTER(20), DIMENSION(FILE_DIM) :: BNDF_TYPE
-CHARACTER(20) :: BNDF_TYPE_CHOSEN
-INTEGER :: NSLICE_LABELS, SLICE_EXIST
-REAL(FB), DIMENSION(FILE_DIM) :: X1, X2, Y1, Y2, Z1, Z2
-INTEGER,  DIMENSION(60) :: IB,IS
-INTEGER,  DIMENSION(FILE_DIM) :: PL3D_MESH,SLCF_MESH,BNDF_MESH
-REAL(FB), DIMENSION(FILE_DIM) :: PL3D_TIME
-LOGICAL, DIMENSION(FILE_DIM) :: FILE_EXISTS
-INTEGER :: RCODE
-INTEGER :: NFILES_EXIST
-REAL(FB) :: ZOFFSET
-INTEGER :: ZOFFSET_FLAG
-LOGICAL :: EXISTS
-INTEGER :: LU_IN, NARGS, IARG, LENSTRING 
-CHARACTER(256) :: BUFFER, FILEIN
-INTEGER, DIMENSION(256) :: SB_TOKS, SE_TOKS
-INTEGER :: N_TOKS
-INTEGER :: ERROR_STATUS
-CHARACTER(256) :: ARG
-
-! Optional arguments in the call sequence
-
-!NARGS = IARGC()
-!IF(NARGS.GT.0)THEN
-!  DO I = 1, NARGS
-!    CALL GETARG(I,ARG)
-!    IF(ARG.EQ."-h".OR.ARG.EQ."-H")THEN
-!      CALL USAGE2(f2aversion)
-!      STOP
-!    ENDIF
-!    IF(ARG.EQ."-v".OR.ARG.EQ."-V")THEN
-!      CALL VERSION2(f2aversion)
-!      STOP
-!    ENDIF
-!  END DO
-!ENDIF
-
-! Set a few default values
-
-ZOFFSET=0.0
-ZOFFSET_FLAG=0
-EPS=0.001
-FILEIN='STDIN'
-
-! Parse command line arguments
-      
-IF (FILEIN.EQ.'STDIN') THEN
-   LU_IN=5
-ELSE
-   LU_IN=7
-   INQUIRE(FILE=FILEIN,EXIST=EXISTS)
-   IF (.NOT.EXISTS) THEN
-      WRITE(6,*)"*** Fatal error: The file: ",TRIM(FILEIN), " does not exist"
-      STOP
-   ENDIF
-   OPEN(LU_IN,FILE=FILEIN,STATUS='OLD',FORM='FORMATTED')
-ENDIF
-      
-WRITE(6,*) ' Enter Job ID string (CHID):'
-
-READ(LU_IN,'(a)') CHID
- 
-! Check to see if the .smv file exists
- 
-GRIDFILE = TRIM(CHID)//'.smv'
-INQUIRE(FILE=GRIDFILE,EXIST=EXISTS)
-IF (.NOT.EXISTS) THEN
-   WRITE(6,*)"*** Fatal error: The file: ",TRIM(GRIDFILE)," does not exist"
-   STOP
-ENDIF
-
-! Open the .smv file
-
-OPEN(11,FILE=GRIDFILE,STATUS='OLD',FORM='FORMATTED')
- 
- 
-! Determine the number of meshes
-
-REWIND(11)
- 
-CALL SEARCH('NMESHES',7,11,IERR)
-IF (IERR.EQ.1) THEN
-   WRITE(6,*) ' WARNING: Assuming 1 mesh'
-   NMESHES = 1
-ELSE
-   READ(11,*) NMESHES
-ENDIF
-
-ALLOCATE(MESH(NMESHES))
- 
-! Get the coordinates of the meshes
-
-REWIND(11)
- 
-READ_SMV: DO NM=1,NMESHES
-   M=>MESH(NM)
-   CALL SEARCH('GRID',4,11,IERR)
-   READ(11,*) M%IBAR,M%JBAR,M%KBAR
-   ALLOCATE(M%X(0:M%IBAR))
-   ALLOCATE(M%Y(0:M%JBAR))
-   ALLOCATE(M%Z(0:M%KBAR))
- 
-   CALL SEARCH('TRNX',4,11,IERR)
-   READ(11,*) NOC
-   DO I=1,NOC
-      READ(11,*)
-      ENDDO
-      DO I=0,M%IBAR
-      READ(11,*) IDUM,M%X(I)
-   ENDDO
- 
-   CALL SEARCH('TRNY',4,11,IERR)
-   READ(11,*) NOC
-   DO I=1,NOC
-      READ(11,*)
-      ENDDO
-      DO J=0,M%JBAR
-      READ(11,*) IDUM,M%Y(J)
-   ENDDO
- 
-   CALL SEARCH('TRNZ',4,11,IERR)
-   READ(11,*) NOC
-   DO I=1,NOC
-      READ(11,*)
-      ENDDO
-      DO K=0,M%KBAR
-      READ(11,*) IDUM,M%Z(K)
-   ENDDO
- 
-ENDDO READ_SMV
- 
-! Get sampling factor for data
-
-write(6,*) ' Enter Sampling Factor for Data?'
-write(6,*) ' (1 for all data, 2 for every other point, etc.)'
-
-READ(LU_IN,*) NSAM
- 
-! Determine whether to limit domain size
-
-! ANS(1:1) may be 'y', 'n' or 'z' (or upper case equivalents)
-! ANS(2:2) may be 'a' or ' '
- 
-! y - domain size is limited
-! n - domain size is not limited
-! z - domain size is not limited z levels are offset by zoffset
-! a - slice files are selected based on slice file type and location
-
-write(6,*) ' Domain selection:'
-write(6,*) '   y - domain size is limited'
-write(6,*) '   n - domain size is not limited'
-write(6,*) '   z - domain size is not limited and z levels are offset'
-write(6,*) '   ya, na or za - slice files are selected based on type and location.'
-write(6,*) '       The y, n, z prefix are defined as before.  '
-READ(LU_IN,'(A)') ANS
-CALL TOUPPER(ANS,ANS)
-IF (ANS(1:1).EQ.'Y') THEN
-   write(6,*) ' Enter min/max x, y and z'
-   READ(LU_IN,*) XS,XF,YS,YF,ZS,ZF
-ELSE
-   XS = -100000.
-   XF =  100000.
-   YS = -100000.
-   YF =  100000.
-   ZS = -100000.
-   ZF =  100000.
-ENDIF
-       
-! If ANS is z or Z then subtract zoffset from z data (for multi-level cases)
-
-IF (ANS(1:1).EQ.'Z') THEN
-   ZOFFSET_FLAG=1
-ELSE
-   ZOFFSET_FLAG=0
-ENDIF
-
-IF(LEN(TRIM(ANS)).GT.1)THEN
-   IF (ANS(2:2).EQ.'A')THEN
-      AUTO_SLICE_FLAG=1
-   ELSE
-      AUTO_SLICE_FLAG=0
-   ENDIF
-ELSE
-   AUTO_SLICE_FLAG=0
-ENDIF
- 
-! Extract SLCF data
-
-!EXTRA_SLCF_FILES: DO
-   NSLICE_LABELS=0
-   SLCF_LABEL = 'null'
-
-   IF (ZOFFSET_FLAG.EQ.0) THEN
-      write(6,*) ' Enter starting and ending time for averaging (s @ line 252)'
-      READ(LU_IN,*) TBEG,TEND
-   ELSE
-      write(6,*) ' Enter starting and ending time for averaging (s) and zoffset (m)'
-      READ(LU_IN,*) TBEG,TEND,ZOFFSET
-   ENDIF
-
-   SLCF_MESH = 1
-
-   REWIND(11)
-   NFILES_EXIST=0
-
-   SEARCH_SLCF: DO I=1,FILE_DIM
-      CALL SEARCH2('SLCF',4,'SLCC',4,11,IERR,CHOICE)
-      IF (IERR.EQ.1) EXIT SEARCH_SLCF
-      BACKSPACE(11)
-      READ(11,*) JUNK,SLCF_MESH(I)
-      READ(11,'(A)') SLCF_FILE(I)
-      READ(11,'(A)') SLCF_TEXT(I)
-
-      ! Create unique list of slice types      
-
-      SLICE_EXIST=0
-      DO II=1, NSLICE_LABELS
-        IF(TRIM(SLCF_TEXT(I)).EQ.SLICE_LABELS(II))THEN
-          SLICE_EXIST=1
-          EXIT  ! exit current Do loop
-        ENDIF
-      ENDDO
-      
-      IF (SLICE_EXIST.EQ.0) THEN
-         NSLICE_LABELS=NSLICE_LABELS+1
-         SLICE_LABELS(NSLICE_LABELS)=TRIM(SLCF_TEXT(I))
-      ENDIF
-
-
-      READ(11,*) 
-      READ(11,'(A)') SLCF_UNIT(I)
-      open(12,file=trim(SLCF_FILE(I)),form='unformatted',status='OLD', iostat=RCODE)
-      IF (RCODE.NE.0) THEN
-         CLOSE(12)
-         CYCLE ! jump to SEARCH_SLCF for another run
-      ENDIF
-
-      NFILES_EXIST=NFILES_EXIST+1
-
-      READ(12) UNITJUNK
-      READ(12) UNITJUNK
-      READ(12) UNITJUNK
-      READ(12) I1,I2,J1,J2,K1,K2
-      CLOSE(12)
-
-      NM=SLCF_MESH(I)
-      M=>MESH(NM)
-      X1(I)=M%X(I1)
-      X2(I)=M%X(I2)
-      Y1(I)=M%Y(J1)
-      Y2(I)=M%Y(J2)
-      Z1(I)=M%Z(K1)
-      Z2(I)=M%Z(K2)
-
-      IF(AUTO_SLICE_FLAG.EQ.0)THEN
-         write(6,'(I3,1x,A,1x,A)')I,TRIM(SLCF_TEXT(I)),TRIM(SLCF_FILE(I))
-         write(6,'(3x,A,6(1x,f8.2))')'slice bounds:',M%X(I1),M%X(I2),M%Y(J1),M%Y(J2),M%Z(K1),M%Z(K2)
-      ENDIF
-
-   ENDDO SEARCH_SLCF
-
-   IF (NFILES_EXIST.EQ.0)THEN
-      WRITE(6,*)"There are no slice files to convert"
-      STOP
-   ENDIF
-
-   AUTO_SLICE_IF:  IF (AUTO_SLICE_FLAG.EQ.0) THEN
-
-      write(6,*)'How many variables to read:'
-      READ(LU_IN,*) NV
-      N_AUTO_SLICES=1
-
-   ELSE AUTO_SLICE_IF
-
-      N_AUTO_SLICES=0
-      AUTO_SLICE_FLAG=1
-      write(6,*)' Enter slice file type index'
-      DO II=1, NSLICE_LABELS
-         write(6,'(2x,I3,1x,A)')II,TRIM(SLICE_LABELS(II))
-      ENDDO
-      READ(LU_IN,'(I3)')II
-
-      AUTO_SLICE_LABEL=TRIM(SLICE_LABELS(II))
-
-      boundloop: DO II=1,NFILES_EXIST
-         IF(TRIM(AUTO_SLICE_LABEL).NE.TRIM(SLCF_TEXT(II))) CYCLE boundloop
-         IF(X2(II)-X1(II).GT.EPS)CYCLE boundloop
-         IF(Y2(II)-Y1(II).GT.EPS)CYCLE boundloop
-         write(6,'(4(a,f8.3))')"x=",X1(II)," y=",Y1(II)," zmin=",Z1(II)," zmax=",Z2(II)
-      ENDDO boundloop
-  
-      write(6,*)"Enter 1D SLICE location (x y zmin zmax)"
-      READ(LU_IN,*)AX1, AY1, AZ1, AZ2
-      EPS=0.001
-
-      ! Create list of slices that match requested type and location also record the elevation (z) of each 
-      ! slice so that they may be later output in increasing order
-
-      AUTO_LOOP1: DO I=1,NFILES_EXIST
-         IF (TRIM(SLCF_TEXT(I)).EQ.TRIM(AUTO_SLICE_LABEL))THEN
-            IF(X2(I)-X1(I).GT.EPS)CYCLE
-            IF(Y2(I)-Y1(I).GT.EPS)CYCLE
-            IF(AX1+EPS.LT.X1(I))CYCLE
-            IF(AX1-EPS.GT.X2(I))CYCLE
-            IF(AY1+EPS.LT.Y1(I))CYCLE
-            IF(AY1-EPS.GT.Y2(I))CYCLE
-            N_AUTO_SLICES = N_AUTO_SLICES + 1
-            AUTO_SLICE_LISTS(N_AUTO_SLICES)=I
-            AUTO_SLICE_Z(N_AUTO_SLICES) = Z1(I)
-         ENDIF
-      ENDDO AUTO_LOOP1
-
-   ENDIF AUTO_SLICE_IF
-
-   SUM = 0.
-
-   IF (AUTO_SLICE_FLAG.EQ.1) THEN
-      ALLOCATE(Q(0:1,0:1,0:1,1))
-      ALLOCATE(F(0:1,0:1,0:1))
-      NV = 1
-
-      ! Sort slice list        
-
-      DO I = 1, N_AUTO_SLICES
-         IZMIN1= MINLOC(AUTO_SLICE_Z(I:N_AUTO_SLICES))
-         IZMIN = IZMIN1(1) + I - 1
-         IF (IZMIN.NE.I)THEN
-            ZMIN=AUTO_SLICE_Z(IZMIN)
-            AUTO_SLICE_Z(IZMIN)=AUTO_SLICE_Z(I)
-            AUTO_SLICE_Z(I) = ZMIN
-            IZTEMP = AUTO_SLICE_LISTS(IZMIN)
-            AUTO_SLICE_LISTS(IZMIN)=AUTO_SLICE_LISTS(I)
-            AUTO_SLICE_LISTS(I)=IZTEMP
-         ENDIF
-      ENDDO
-   ELSE
-      N_AUTO_SLICES=1
-   ENDIF
-
-   AUTO_LIST: DO IAUTO=1, N_AUTO_SLICES
-      VARLOOP: DO MV=1,NV
-  
-         IF (AUTO_SLICE_FLAG.EQ.0)THEN
-            SLCF_LABEL_DUMMY=' '
-            ! note:  The following two lines of FORTRAN was my attempt at getting EOR to work.
-            !        I got compile errors. (My "research" said that you can only use EOR with non-advancing IO)
-            !  see http://www.pcc.qub.ac.uk/tec/courses/f77tof90/stu-notes/f90studentMIF_7.html for an example
-            !IF (BATCHMODE.EQ.0) write(6,'(A,I2)',ADVANCE='NO') ' Enter index for variable',MV
-            !READ(LU_IN,*,EOR=200,ADVANCE='NO') I,SLCF_LABEL_DUMMY
-				write(6,'(A,I2)') ' Enter index for variable',MV
-            READ(LU_IN,'(A)',IOSTAT=ERROR_STATUS) BUFFER
-            
-            IF(ERROR_STATUS.NE.0)THEN
-               WRITE(6,*)"*** fatal error: read of variable index failed"
-               STOP
-            ENDIF
-            
-            CALL PARSE(BUFFER,SB_TOKS,SE_TOKS,N_TOKS)
-            
-            IF(N_TOKS.GE.1)THEN
-               READ(BUFFER(SB_TOKS(1):SE_TOKS(1)),*)I
-               IF(N_TOKS.GT.1)SLCF_LABEL_DUMMY=BUFFER(SB_TOKS(2):SE_TOKS(N_TOKS))
-            ELSE
-               WRITE(6,*)"*** fatal error: index for variable ",MV," not entered"
-               STOP
-            ENDIF
-            200 CONTINUE
-            SLCF_LABEL(I) = SLCF_LABEL_DUMMY
-            
-            IF (SLCF_LABEL(I)=='null' .OR. SLCF_LABEL(I)==' ') SLCF_LABEL(I) = SLCF_TEXT(I)
-         ELSE
-            I=AUTO_SLICE_LISTS(IAUTO)
-         ENDIF
-   
-         IS(MV) = I
-         QFILE = SLCF_FILE(I)
-    
-         IF (MV.EQ.1) THEN
-             NM = SLCF_MESH(I)
-             M=>MESH(NM)
-             IF(AUTO_SLICE_FLAG.EQ.1)THEN
-                 DEALLOCATE(Q)
-                 DEALLOCATE(F)
-             ENDIF
-             ALLOCATE(Q(0:M%IBAR,0:M%JBAR,0:M%KBAR,NV))
-             ALLOCATE(F(0:M%IBAR,0:M%JBAR,0:M%KBAR))
-             F = 0.
-             Q = 0.
-         ELSE
-            IF (SLCF_MESH(I).NE.NM) THEN
-                WRITE(6,*) ' ERROR: All slices must have the same mesh'
-                STOP
-            ENDIF
-         ENDIF
-
-         OPEN(12,FILE=QFILE,FORM='UNFORMATTED',STATUS='OLD')
-    
-         READ(12)
-         READ(12)
-         READ(12)
-         READ(12) I1,I2,J1,J2,K1,K2                    
-     
-         IF (MV.EQ.1) THEN
-             I10=I1 ; I20=I2 ; J10=J1 ; J20=J2 ; K10=K1 ; K20=K2
-             IF (I1.EQ.I2) IOR_SLCF = 1
-             IF (J1.EQ.J2) IOR_SLCF = 2
-             IF (K1.EQ.K2) IOR_SLCF = 3
-         ELSE
-            IF (I1.EQ.I2 .AND. I10.EQ.I20) THEN
-               I1=I10
-               I2=I20
-            ENDIF
-            IF (J1.EQ.J2 .AND. J10.EQ.J20) THEN
-               J1=J10
-               J2=J20
-            ENDIF
-            IF (K1.EQ.K2 .AND. K10.EQ.K20) THEN
-               K1=K10
-               K2=K20
-            ENDIF
-            IF (((I1.NE.I10.OR.I2.NE.I20).AND.(I10.NE.I20)) .OR. &
-               ((J1.NE.J10.OR.J2.NE.J20).AND.(J10.NE.J20)) .OR. &
-               ((K1.NE.K10.OR.K2.NE.K20).AND.(K10.NE.K20))) THEN
-               WRITE(6,*) ' ERROR: Slice files are incompatible'
-               STOP
-            ENDIF
-         ENDIF
-           
-         NCOUNT = 0
-         
-         READ_LOOP: DO
-             READ(12,END=99) TIME
-             READ(12,END=99) (((F(I,J,K),I=I1,I2),J=J1,J2),K=K1,K2)
-             IF (TIME.LT.TBEG) CYCLE READ_LOOP
-             IF (TIME.GT.TEND) EXIT READ_LOOP
-             NCOUNT = NCOUNT + 1
-         
-             Q(I1:I2,J1:J2,K1:K2,MV) = Q(I1:I2,J1:J2,K1:K2,MV)+F(I1:I2,J1:J2,K1:K2)
-         ENDDO READ_LOOP
-       
-         99  CLOSE(12)
-        
-         IF (NCOUNT.EQ.0) NCOUNT=1
-       
-         DO K=K1,K2
-             DO J=J1,J2
-                 DO I=I1,I2
-                     Q(I,J,K,MV) = Q(I,J,K,MV)/REAL(NCOUNT)
-                 ENDDO
-             ENDDO
-         ENDDO
-       
-         SELECT CASE(IOR_SLCF)
-            CASE(1)
-               DO K=K1+1,K2
-                  DO J=J1+1,J2
-                     SUM(MV) = SUM(MV) + 0.25*(Q(I1,J,K,MV)+Q(I1,J-1,K,MV)+Q(I1,J,K-1,MV)+Q(I1,J-1,K-1,MV))*(M%Y(J)-M%Y(J-1))*(M%Z(K)-M%Z(K-1))
-                  ENDDO
-               ENDDO
-            CASE(2)
-               DO K=K1+1,K2
-                  DO I=I1+1,I2
-                     SUM(MV) = SUM(MV) + 0.25*(Q(I,J1,K,MV)+Q(I-1,J1,K,MV)+Q(I,J1,K-1,MV)+Q(I-1,J1,K-1,MV))*(M%X(I)-M%X(I-1))*(M%Z(K)-M%Z(K-1))
-                  ENDDO
-               ENDDO
-            CASE(3)
-               DO J=J1+1,J2
-                  DO I=I1+1,I2
-                     SUM(MV) = SUM(MV) + 0.25*(Q(I,J,K1,MV)+Q(I-1,J,K1,MV)+Q(I,J-1,K1,MV)+Q(I-1,J-1,K1,MV))*(M%X(I)-M%X(I-1))*(M%Y(J)-M%Y(J-1))
-                  ENDDO
-               ENDDO
-         END SELECT
-          
-         write(6,'(A,A,A,ES12.4)') ' Integral of ',TRIM(SLCF_TEXT(IS(MV))),' = ',SUM(MV)
-          
-      ENDDO VARLOOP
-         
-      ! WRITE OUT SLICE DATA IF AUTO_SLICE_FLAG IS SET
-      !(WRITE IT OUT HERE RATHER THAN later SO WE DON'T HAVE TO SAVE EXTRA DATA)
-          
-      IF (AUTO_SLICE_FLAG.EQ.1) THEN
-         IF(IAUTO.EQ.1)THEN
-            write(6,*) 'Enter output file name: (line 541)'
-            READ(LU_IN,'(A)') OUTFILE
-            OPEN(44,FILE=OUTFILE,FORM='FORMATTED',STATUS='UNKNOWN')
-            write(6,*) ' Writing to file...      ',TRIM(OUTFILE)
-            ZMIN=-1000000000000.0
-         ENDIF
-  
-         I3 = I2 - I1 + 1
-         J3 = J2 - J1 + 1
-         K3 = K2 - K1 + 1
-  
-         ! One-dimensional section file
-         ! NOTE: IN AUTO_SLICE MODE ONLY VERTICAL 1D SLICES ARE SUPPORTED
-  
-         IF (I1.EQ.I2 .AND. J1.EQ.J2 .AND. K1.NE.K2) then
-            IF(IAUTO.EQ.1)THEN
-               WRITE(FRMT,'(A,I2.2,A)') "(1X,",NV,"(A,','),A)"
-               WRITE(44,FRMT) 'Z',(TRIM(SLCF_LABEL(IS(L))),L=1,NV)
-               WRITE(44,FRMT) 'm',(TRIM(SLCF_UNIT(IS(L))),L=1,NV)
-               WRITE(FRMT,'(A,I2.2,A)') "(",NV,"(E12.5,','),E12.5)"
-               write(6,*) ' Writing to file with Z-axis  ',TRIM(OUTFILE)
-            ENDIF
-            LOOP1A: DO K=K1,K2,NSAM
-               IF (M%Z(K).GT.ZF .OR. M%Z(K).LT.ZS) CYCLE LOOP1A
-               IF (ZOFFSET_FLAG.EQ.1.AND.M%Z(K)-ZOFFSET.LT.0.0)CYCLE LOOP1A
-               IF(M%Z(K).LT.AZ1)CYCLE LOOP1A
-               IF(M%Z(K).GT.AZ2)EXIT LOOP1A
-               IF(M%Z(K)-ZOFFSET.GT.ZMIN)THEN
-                  WRITE(44,FRMT) M%Z(K)-ZOFFSET,(Q(I2,J2,K,L),L=1,NV)
-               ENDIF
-               ZMIN=M%Z(k)-ZOFFSET
-            enddo LOOP1A
-         endif
-      ENDIF
-      
-   ENDDO AUTO_LIST
-   ! AUTO_SLICE DATA WAS ALREADY GENERATED
-
-   IF(AUTO_SLICE_FLAG.EQ.1) STOP
-
-   ! Write out the data to an ASCII file
-
-   write(6,*) 'Enter output file name: (line 582)'
-   READ(LU_IN,'(A)') OUTFILE
-   OPEN(44,FILE=OUTFILE,FORM='FORMATTED',STATUS='UNKNOWN')
-!   write(6,*) ' Writing to file...      ',TRIM(OUTFILE)
- 
-   I3 = I2 - I1 + 1
-   J3 = J2 - J1 + 1
-   K3 = K2 - K1 + 1
-
-   ! One-dimensional section file
-
-   IF (I1.EQ.I2 .AND. J1.EQ.J2 .AND. K1.NE.K2) then
-     WRITE(FRMT,'(A,I2.2,A)') "(1X,",NV,"(A,','),A)"
-     WRITE(44,FRMT) 'Z',(TRIM(SLCF_LABEL(IS(L))),L=1,NV)
-     WRITE(44,FRMT) 'm',(TRIM(SLCF_UNIT(IS(L))),L=1,NV)
-     WRITE(FRMT,'(A,I2.2,A)') "(",NV,"(E12.5,','),E12.5)"
-     write(6,*) ' Writing to file Z-axis      ',TRIM(OUTFILE)
-     LOOP1: DO K=K1,K2,NSAM
-     IF (M%Z(K).GT.ZF .OR. M%Z(K).LT.ZS) CYCLE LOOP1
-     IF (ZOFFSET_FLAG.EQ.1.AND.M%Z(K)-ZOFFSET.LT.0.0) CYCLE LOOP1
-     write(44,FRMT) M%Z(K)-ZOFFSET,(Q(I2,J2,K,L),L=1,NV)
-     enddo LOOP1
-   endif
-
-   if(i1.eq.i2.and.j1.ne.j2.and.k1.eq.k2) then
-     WRITE(FRMT,'(A,I2.2,A)') "(1X,",NV,"(A,','),A)"
-     WRITE(44,FRMT) 'Y',(TRIM(SLCF_LABEL(IS(L))),L=1,NV)
-     WRITE(44,FRMT) 'm',(TRIM(SLCF_UNIT(IS(L))),L=1,NV)
-     WRITE(FRMT,'(A,I2.2,A)') "(",NV,"(E12.5,','),E12.5)"
-     write(6,*) ' Writing to file Y-axis      ',TRIM(OUTFILE)
-     LOOP2: DO J=J1,J2,NSAM
-       IF (M%Y(J).GT.YF .OR. M%Y(J).LT.YS) CYCLE LOOP2
-       write(44,FRMT) M%y(j),(q(i2,j,k2,l),l=1,nv)
-     enddo LOOP2
-   endif
-
-   if(i1.ne.i2.and.j1.eq.j2.and.k1.eq.k2) then
-     WRITE(FRMT,'(A,I2.2,A)') "(1X,",NV,"(A,','),A)"
-     WRITE(44,FRMT) 'X',(TRIM(SLCF_LABEL(IS(L))),L=1,NV)
-     WRITE(44,FRMT) 'm',(TRIM(SLCF_UNIT(IS(L))),L=1,NV)
-     WRITE(FRMT,'(A,I2.2,A)') "(",NV,"(E12.5,','),E12.5)"
-     write(6,*) ' Writing to file X-axis      ',TRIM(OUTFILE)
-     LOOP3: DO I=I1,I2,NSAM
-     IF (M%X(I).GT.XF .OR. M%X(I).LT.XS) CYCLE LOOP3
-     write(44,FRMT) M%x(i),(q(i,j2,k2,l),l=1,nv)
-     enddo LOOP3
-   endif
-
-   ! Two-dimensional section file
-
-   if(i1.eq.i2.and.j1.ne.j2.and.k1.ne.k2) then
-   WRITE(FRMT,'(A,I2.2,A)') "(1X,",NV+1,"(A,','),A)"
-   WRITE(44,FRMT) 'Y','Z',(TRIM(SLCF_LABEL(IS(L))),L=1,NV)
-   WRITE(44,FRMT) 'm','m',(TRIM(SLCF_UNIT(IS(L))),L=1,NV)
-   WRITE(FRMT,'(A,I2.2,A)') "(",NV+1,"(E12.5,','),E12.5)"
-     write(6,*) ' Writing Y-Z surface data to file  ',TRIM(OUTFILE)
-   DO K=K1,K2,NSAM
-   LOOP4: DO J=J1,J2,NSAM
-   IF (M%Y(J).GT.YF .OR. M%Y(J).LT.YS) CYCLE LOOP4
-   IF (M%Z(K).GT.ZF .OR. M%Z(K).LT.ZS) CYCLE LOOP4
-   write(44,FRMT) M%y(j),M%z(k)-zoffset,(q(i2,j,k,l),l=1,nv)
-   enddo LOOP4
-   enddo
-   endif
-
-   if (j1.eq.j2.and.i1.ne.i2.and.k1.ne.k2) then
-   WRITE(FRMT,'(A,I2.2,A)') "(1X,",NV+1,"(A,','),A)"
-   WRITE(44,FRMT) 'X','Z',(TRIM(SLCF_LABEL(IS(L))),L=1,NV)
-   WRITE(44,FRMT) 'm','m',(TRIM(SLCF_UNIT(IS(L))),L=1,NV)
-   WRITE(FRMT,'(A,I2.2,A)') "(",NV+1,"(E12.5,','),E12.5)"
-   write(6,*) ' Writing X-Z surface data to file  ',TRIM(OUTFILE)
-   DO K=K1,K2,NSAM
-   LOOP5: DO I=I1,I2,NSAM
-   IF (M%X(I).GT.XF .OR. M%X(I).LT.XS) CYCLE LOOP5
-   IF (M%Z(K).GT.ZF .OR. M%Z(K).LT.ZS) CYCLE LOOP5
-   write(44,FRMT) M%x(i),M%z(k)-zoffset,(q(i,j2,k,l),l=1,nv)
-   enddo LOOP5
-   enddo
-   endif
-
-   if(k1.eq.k2.and.i1.ne.i2.and.j1.ne.j2) then
-   WRITE(FRMT,'(A,I2.2,A)') "(1X,",NV+1,"(A,','),A)"
-   WRITE(44,FRMT) 'X','Y',(TRIM(SLCF_LABEL(IS(L))),L=1,NV)
-   WRITE(44,FRMT) 'm','m',(TRIM(SLCF_UNIT(IS(L))),L=1,NV)
-   WRITE(FRMT,'(A,I2.2,A)') "(",NV+1,"(E12.5,','),E12.5)"
-     write(6,*) ' Writing X-Y surface data to file  ',TRIM(OUTFILE)
-   DO J=J1,J2,NSAM
-   LOOP6: DO I=I1,I2,NSAM
-   IF (M%X(I).GT.XF .OR. M%X(I).LT.XS) CYCLE LOOP6
-   IF (M%Y(J).GT.YF .OR. M%Y(J).LT.YS) CYCLE LOOP6
-   write(44,FRMT) M%x(i),M%y(j),(q(i,j,k2,l),l=1,nv)
-   enddo LOOP6
-   enddo
-   endif
-
-   ! Three-dimensional section file
-
-   if (i1.ne.i2.and.j1.ne.j2.and.k1.ne.k2) then
-   WRITE(FRMT,'(A,I2.2,A)') "(1X,",NV+2,"(A,','),A)"
-   WRITE(44,FRMT) 'X','Y','Z',(TRIM(SLCF_LABEL(IS(L))),L=1,NV)
-   WRITE(44,FRMT) 'm','m','m',(TRIM(SLCF_UNIT(IS(L))),L=1,NV)
-   WRITE(FRMT,'(A,I2.2,A)') "(",NV+2,"(E12.5,','),E12.5)"
-     write(6,*) ' Writing 3-D body data to file ',TRIM(OUTFILE)
-   DO K=K1,K2,NSAM
-   DO J=J1,J2,NSAM
-   LOOP7: DO I=I1,I2,NSAM
-   IF (M%X(I).GT.XF .OR. M%X(I).LT.XS) CYCLE LOOP7
-   IF (M%Y(J).GT.YF .OR. M%Y(J).LT.YS) CYCLE LOOP7
-   IF (M%Z(K).GT.ZF .OR. M%Z(K).LT.ZS) CYCLE LOOP7
-   write(44,FRMT) M%x(i),M%y(j),M%z(k),(q(i,j,k,l),l=1,nv)
-   enddo LOOP7
-   enddo
-   enddo
-   endif
-   
-   
-   CLOSE(44)
-   
-!ENDDO EXTRA_SLCF_FILES
-
-STOP
-END PROGRAM FDSPOST
-
-! *********************** SEARCH *******************************
-
-SUBROUTINE SEARCH(STRING,LENGTH,LU,IERR)
-
-IMPLICIT NONE
-CHARACTER(*), INTENT(IN) :: STRING
-INTEGER, INTENT(OUT) :: IERR
-INTEGER, INTENT(IN) :: LU, LENGTH
-CHARACTER(20) :: JUNK
-
-SEARCH_LOOP: DO 
-   READ(LU,'(A)',END=10) JUNK
-   IF (JUNK(1:LENGTH).EQ.STRING(1:LENGTH)) EXIT SEARCH_LOOP
-ENDDO SEARCH_LOOP
-
-IERR = 0
-RETURN
-
-10 IERR = 1
-RETURN
-
-END SUBROUTINE SEARCH
-
-SUBROUTINE SEARCH2(STRING,LENGTH,STRING2,LENGTH2,LU,IERR,CHOICE)
-
-IMPLICIT NONE
-CHARACTER(*), INTENT(IN) :: STRING,STRING2
-CHARACTER(*), INTENT(OUT) :: CHOICE
-INTEGER, INTENT(OUT) :: IERR
-INTEGER, INTENT(IN) :: LU, LENGTH, LENGTH2
-CHARACTER(20) :: JUNK
-
-SEARCH_LOOP: DO 
-   READ(LU,'(A)',END=10) JUNK
-   IF (JUNK(1:LENGTH).EQ.STRING(1:LENGTH).OR.JUNK(1:LENGTH2).EQ.STRING2(1:LENGTH2)) THEN
-      IF (JUNK(1:LENGTH) .EQ.STRING(1:LENGTH))   CHOICE = JUNK(1:LENGTH)
-      IF (JUNK(1:LENGTH2).EQ.STRING2(1:LENGTH2)) CHOICE = JUNK(1:LENGTH2)
-      EXIT SEARCH_LOOP
-   ENDIF
-ENDDO SEARCH_LOOP
-
-IERR = 0
-RETURN
-
-10 IERR = 1
-RETURN
-
-END SUBROUTINE SEARCH2
-
-! *********************** USAGE2 *******************************
-
-!SUBROUTINE USAGE2(f2aversion)
-!IMPLICIT NONE
-!
-!CHARACTER(255), intent(in) :: f2aversion
-!INTEGER :: lastchar
-!        
-!        
-!WRITE(6,*)"fds2ascii ",trim(f2aversion)," ",TRIM(GITHASH_PP)
-!WRITE(6,*)""
-!WRITE(6,*)"  Convert boundary, slice or plot3d data generated"
-!WRITE(6,*)"  by FDS to an ascii spreadsheet file."
-!WRITE(6,*)""
-!WRITE(6,*)"Usage:"
-!WRITE(6,*)"  fds2ascii [-h] [-v] [input]"
-!WRITE(6,*)""
-!WRITE(6,*)"   -h    - print out this message"
-!WRITE(6,*)"   -v    - print out version info"
-!WRITE(6,*)"   input - read input from a file named input or from"
-!WRITE(6,*)"           the console if no file is specified"
-!END SUBROUTINE USAGE2
-!
-!! *********************** VERSION2 *******************************
-!
-!SUBROUTINE VERSION2(f2aversion)
-!IMPLICIT NONE
-!
-!CHARACTER(255), intent(in) :: f2aversion
-!
-!CHARACTER(60) :: DATE
-!
-!WRITE(6,'(/A/)')      ' fds2ascii'
-!WRITE(6,'(A,A)')      ' Version          : ',TRIM(f2aversion)
-!WRITE(6,'(A,A)')      ' Revision         : ',TRIM(GITHASH_PP)
-!WRITE(6,'(A,A)')      ' Revision Date    : ',TRIM(GITDATE_PP)
-!WRITE(6,'(A,A/)')     ' Compilation Date : ',TRIM(BUILDDATE_PP)
-!
-!
-!END SUBROUTINE VERSION2
-
-! *********************** PARSE *******************************
-
-SUBROUTINE PARSE(BUFFER,SB_TOKS,SE_TOKS,N_TOKS)
-
-! parse buffer into a series of tokens each separated by blanks
-
-IMPLICIT NONE
-CHARACTER(*), INTENT(INOUT) :: BUFFER
-INTEGER, DIMENSION(*), INTENT(OUT) :: SB_TOKS, SE_TOKS
-INTEGER, INTENT(OUT) :: N_TOKS
-INTEGER :: I, INTOK, INQUOTE, LENBUF
-CHARACTER(LEN=1) :: C
-
-N_TOKS=0
-LENBUF = LEN(TRIM(BUFFER))
-IF(LENBUF.EQ.0)RETURN ! buffer is blank so there are no tokens
-INTOK=0
-INQUOTE=0
-DO I = 1, LENBUF
-  IF(INTOK.EQ.0)THEN  
-     IF(BUFFER(I:I).NE.' ')THEN  ! beginning of a new token since previous char
-       INTOK=1                   ! was not in a token and this one is
-       N_TOKS=N_TOKS + 1
-       SB_TOKS(N_TOKS)=I
-       IF(BUFFER(I:I).EQ."'")INQUOTE=1
-     ENDIF
-  ELSE
-     IF(INQUOTE.EQ.1)THEN
-        IF(BUFFER(I:I).EQ."'")THEN
-           SE_TOKS(N_TOKS)=I
-           INTOK=0
-           INQUOTE=0
-        ENDIF
-     ENDIF
-     IF(BUFFER(I:I).EQ.' ')THEN
-       SE_TOKS(N_TOKS)=I-1       ! previous char was in a token, this one is not
-       INTOK=0                   ! so previous char is end of token
-     ENDIF
-  ENDIF
-END DO
-IF(BUFFER(LENBUF:LENBUF).NE.' ')SE_TOKS(N_TOKS)=LENBUF ! last char in buffer is not blank
-                                                       ! so it is end of last token
-
-! strip out single or double quotes if present
-DO I = 1, N_TOKS
-   C = BUFFER(SB_TOKS(I):SB_TOKS(I))
-   IF(C.EQ."'")SB_TOKS(I)=SB_TOKS(I)+1
-   C = BUFFER(SE_TOKS(I):SE_TOKS(I))
-   IF(C.EQ."'")SE_TOKS(I)=SE_TOKS(I)-1
-   IF(SE_TOKS(I).LT.SB_TOKS(I))THEN
-     SE_TOKS(I)=SB_TOKS(I)
-     BUFFER(SB_TOKS(I):SE_TOKS(I))=' '
-   ENDIF
-END DO
-END SUBROUTINE PARSE
-
-! *********************** TOUPPER *******************************
-
-SUBROUTINE TOUPPER(BUFFERIN, BUFFEROUT)
-CHARACTER(LEN=*), INTENT(IN) :: BUFFERIN
-CHARACTER(LEN=*), INTENT(OUT) :: BUFFEROUT
-CHARACTER(LEN=1) :: C
-
-INTEGER :: LENBUF, I
-
-LENBUF=MIN(LEN(TRIM(BUFFERIN)),LEN(BUFFEROUT))
-DO I = 1, LENBUF
-   C = BUFFERIN(I:I)
-   IF(C.GE.'a'.AND.C.LE.'z')C=CHAR(ICHAR(C)+ICHAR('A')-ICHAR('a'))
-    BUFFEROUT(I:I)=C
-END DO
-
-END SUBROUTINE TOUPPER
+program fdspost
+
+    ! program to convert various fds output files to ascii
+
+    implicit none
+
+    interface
+        subroutine parse(buffer,sb_toks,se_toks,n_toks)
+            implicit none
+            character(*), intent(inout) :: buffer
+            integer, dimension(*), intent(out) :: sb_toks, se_toks
+            integer, intent(out) :: n_toks
+        end subroutine parse
+    end interface
+
+    character(255), parameter :: f2aversion='2.1.0'
+    integer, parameter :: fb = selected_real_kind(6)
+    integer, parameter :: file_dim = 500
+    integer, parameter :: time_dim = 1010
+    integer :: ierr, NMESHES, nm, noc, i, j, k, l
+    integer :: idum, ifile, nsam, nv, mv
+    integer :: i1, i2, j1, j2, k1, k2, t1, t2, i3, j3, k3
+    integer :: i10, i20, j10, j20, k10, k20
+    integer :: ncount, ior_input, npatch, ijbar, jkbar
+    integer :: ii, nxp, nyp, nzp, n, i_sample
+    real(fb) :: xs, xf, ys, yf, zs, zf
+    real(fb) :: d1, d2, d3, d4, tbeg, tend
+    character(256) :: auto_slice_label
+    integer :: auto_slice_flag, n_auto_slices, iauto, iztemp
+    integer, dimension(1) :: izmin1
+    integer :: izmin
+    integer, dimension(file_dim) :: auto_slice_lists
+    real(fb), dimension(file_dim) :: auto_slice_z
+    real(fb) :: ax1, ay1, az1, az2
+    real(fb) :: eps, zmin
+
+    type mesh_type
+        real(fb), pointer, dimension(:) :: x,y,z
+        real(fb) :: d1,d2,d3,d4
+        integer :: ibar,jbar,kbar,ierr,nxp,nyp,nzp
+    end type mesh_type
+
+    type (mesh_type), dimension(:), allocatable, target :: mesh
+    type(mesh_type), pointer :: m
+
+    real(fb), dimension(60) :: sum
+    integer, allocatable, dimension(:) :: ior,i1b,i2b,j1b,j2b,k1b,k2b
+    integer, allocatable, dimension(:) :: auto_slices
+    real(fb), allocatable, dimension(:,:,:,:,:) :: quantity
+    real(fb), allocatable, dimension(:,:,:,:) :: q
+    real(fb), allocatable, dimension(:,:,:) :: f
+    real(fb), allocatable, dimension(:) :: time
+    logical, allocatable, dimension(:,:,:) :: already_used
+    logical :: new_plot3d=.true.
+    integer ior_slcf
+    character(1) :: ans
+    character(4) :: ext1, ext2
+    character(4) :: choice
+    character(30) :: unitjunk
+    character(256) gridfile,qname,chid,qfile,junk,frmt,outfile,outfile1,outfile2,slcf_label_dummy
+    character(256), dimension(file_dim) :: pl3d_file,slcf_file,bndf_file,slcf_text,bndf_text,slcf_unit,bndf_unit,slcf_label
+    character(256), dimension(file_dim) :: slice_labels
+    character(20), dimension(file_dim) :: bndf_type
+    character(20) :: bndf_type_chosen
+    integer :: nslice_labels, slice_exist
+    real(fb), dimension(file_dim) :: x1, x2, y1, y2, z1, z2
+    integer,  dimension(60) :: ib,is
+    integer,  dimension(file_dim) :: pl3d_mesh,slcf_mesh,bndf_mesh
+    logical, dimension(file_dim) :: file_exists
+    integer :: rcode
+    integer :: nfiles_exist
+    real(fb) :: zoffset
+    integer :: zoffset_flag
+    logical :: exists
+    integer :: lu_in, nargs, iarg, lenstring 
+    character(256) :: buffer, filein
+    integer, dimension(256) :: sb_toks, se_toks
+    integer :: n_toks
+    integer :: Error_status
+    character(256) :: arg
+
+    ! For debug usage
+!    write(*,*) "Selected_real_kind(6) = ",fb
+    ! set a few default values
+
+    zoffset=0.0
+    zoffset_flag=0
+    eps=0.001
+    filein='stdin'
+
+    ! parse command line arguments
+
+    if (filein.eq.'stdin') then
+        lu_in=5
+    else
+        lu_in=7
+        inquire(file=filein,exist=exists)
+        if (.not.exists) then
+            write(6,*)"*** fatal Error: the file: ",trim(filein), " does not exist"
+            stop
+        endif
+        open(lu_in,file=filein,status='old',form='formatted')
+    endif
+
+    write(6,*) ' Enter job id string (chid):'
+
+    read(lu_in,'(a)') chid
+
+    ! check to see if the .smv file exists
+
+    gridfile = trim(chid)//'.smv'
+    inquire(file=gridfile,exist=exists)
+    if (.not.exists) then
+        write(6,*)"*** fatal Error: the file: ",trim(gridfile)," does not exist"
+        stop
+    endif
+
+    ! open the .smv file
+
+    open(11,file=gridfile,status='old',form='formatted')
+    write(*,*) "Open SMV file: ",trim(gridfile)
+    print *
+
+
+    ! determine the number of meshes
+
+    rewind(11)
+
+    call search('NMESHES',7,11,ierr)
+    if (ierr.eq.1) then
+        write(6,*) ' warning: assuming 1 mesh'
+        NMESHES = 1
+    else
+        read(11,*) NMESHES
+        write(*,*) "Number of mesh is: ",NMESHES
+    endif
+
+    allocate(mesh(NMESHES))
+
+    ! get the coordinates of the meshes
+
+    rewind(11)
+
+    read_smv: do nm=1,NMESHES
+
+    m=>mesh(nm)
+    call search('GRID',4,11,ierr)
+    read(11,*) m%ibar,m%jbar,m%kbar
+    allocate(m%x(0:m%ibar))
+    allocate(m%y(0:m%jbar))
+    allocate(m%z(0:m%kbar))
+
+    call search('TRNX',4,11,ierr)
+    read(11,*) noc
+    do i=1,noc
+    read(11,*)
+    enddo
+    do i=0,m%ibar
+    read(11,*) idum,m%x(i)
+    enddo
+
+    call search('TRNY',4,11,ierr)
+    read(11,*) noc
+    do i=1,noc
+    read(11,*)
+    enddo
+    do j=0,m%jbar
+    read(11,*) idum,m%y(j)
+    enddo
+
+    call search('TRNZ',4,11,ierr)
+    read(11,*) noc
+    do i=1,noc
+    read(11,*)
+    enddo
+    do k=0,m%kbar
+    read(11,*) idum,m%z(k)
+    enddo
+
+    enddo read_smv
+
+    ! get sampling factor for data
+
+    !    write(6,*) ' enter sampling factor for data?'
+    !    write(6,*) ' (1 for all data, 2 for every other point, etc.)'
+
+    !   read(lu_in,*) nsam
+    nsam=1
+
+    ! determine whether to limit domain size
+
+    ! ans(1:1) may be 'y', 'n' or 'z' (or upper case equivalents)
+    ! ans(2:2) may be 'a' or ' '
+
+    ! y - domain size is limited
+    ! n - domain size is not limited
+    ! z - domain size is not limited z levels are offset by zoffset
+    ! a - slice files are selected based on slice file type and location
+
+    write(6,*) ' domain selection:'
+    write(6,*) '   y - domain size is limited'
+    write(6,*) '   n - domain size is not limited'
+    write(6,*) '   z - domain size is not limited and z levels are offset'
+    read(lu_in,'(a)') ans
+    print *
+    call toupper(ans,ans)
+    if (ans(1:1).eq.'y') then
+        write(6,*) ' Enter min/max x, y and z'
+        read(lu_in,*) xs,xf,ys,yf,zs,zf
+    else
+        xs = -100000.
+        xf =  100000.
+        ys = -100000.
+        yf =  100000.
+        zs = -100000.
+        zf =  100000.
+    endif
+
+    ! if ans is z or z then subtract zoffset from z data (for multi-level cases)
+
+    if (ans(1:1).eq.'z') then
+        zoffset_flag=1
+    else
+        zoffset_flag=0
+    endif
+
+    ! extract slcf data
+
+    nslice_labels=0
+    slcf_label = 'null'
+
+!    if (zoffset_flag.eq.0) then
+!        write(6,*) ' Enter starting and ending time for averaging (s)'
+!        read(lu_in,*) tbeg,tend
+!    else
+!        write(6,*) ' Enter starting and ending time for averaging (s) and zoffset (m)'
+!        read(lu_in,*) tbeg,tend,zoffset
+!    endif
+
+    slcf_mesh = 1
+
+    rewind(11)
+    nfiles_exist=0
+
+    ! ------------- key ieteration search slcf (i)
+    search_slcf: do i=1,file_dim    !====================================================
+
+    call search2('SLCF',4,'SLCC',4,11,ierr,choice)
+    if (ierr.eq.1) exit search_slcf
+    backspace(11)
+    read(11,*) junk,slcf_mesh(i)
+    read(11,'(a)') slcf_file(i)
+    read(11,'(a)') slcf_text(i)
+
+    ! create unique list of slice types      
+
+    slice_exist=0
+    do ii=1, nslice_labels
+    if(trim(slcf_text(i)).eq.slice_labels(ii))then
+        slice_exist=1
+        exit  ! exit current do loop
+    endif
+    enddo
+
+    if (slice_exist.eq.0) then
+        nslice_labels=nslice_labels+1
+        slice_labels(nslice_labels)=trim(slcf_text(i))
+    endif
+
+
+    read(11,*) 
+    read(11,'(a)') slcf_unit(i)
+    open(12,file=trim(slcf_file(i)),form='unformatted',status='old', iostat=rcode)
+    if (rcode.ne.0) then
+        close(12)
+        cycle ! jump to search_slcf for another run
+    endif
+
+    nfiles_exist=nfiles_exist+1
+
+    read(12) unitjunk
+    read(12) unitjunk
+    read(12) unitjunk
+    read(12) i1,i2,j1,j2,k1,k2
+    close(12)
+
+
+    nm=slcf_mesh(i)
+    m=>mesh(nm)
+    x1(i)=m%x(i1)
+    x2(i)=m%x(i2)
+    y1(i)=m%y(j1)
+    y2(i)=m%y(j2)
+    z1(i)=m%z(k1)
+    z2(i)=m%z(k2)
+
+    write(6,'(i3,1x,a,1x,a)')i,trim(slcf_text(i)),trim(slcf_file(i))
+    write(6,'(3x,a,6(1x,f8.2))')'slice bounds:',m%x(i1),m%x(i2),m%y(j1),m%y(j2),m%z(k1),m%z(k2)
+    write(6,*) 
+
+    enddo search_slcf
+
+    if (nfiles_exist.eq.0)then
+        write(6,*)"there are no slice files to convert"
+        stop
+    endif
+
+
+    write(6,*)'How many variables to read:'
+    read(lu_in,*) nv   ! ---- key iteration mv = 1:nv
+    print *
+    n_auto_slices=1
+
+
+    sum = 0.
+
+    varloop: do mv=1,nv  ! -----------------------------------
+
+    slcf_label_dummy=' '
+    write(6,'(a,i2)') ' Enter index for variable',mv
+    read(lu_in,'(a)',iostat=Error_status) buffer
+    print *
+
+    if(Error_status.ne.0)then
+        write(6,*)"*** fatal Error: read of variable index failed"
+        stop
+    endif
+
+    call parse(buffer,sb_toks,se_toks,n_toks)
+
+    if(n_toks.ge.1)then
+        read(buffer(sb_toks(1):se_toks(1)),*)i
+        if(n_toks.gt.1)slcf_label_dummy=buffer(sb_toks(2):se_toks(n_toks))
+    else
+        write(6,*)"*** fatal Error: index for variable ",mv," not entered"
+        stop
+    endif
+
+    slcf_label(i) = slcf_label_dummy
+
+    if (slcf_label(i)=='null' .or. slcf_label(i)==' ') slcf_label(i) = slcf_text(i)
+
+    is(mv) = i
+    qfile = slcf_file(i)
+
+    if (mv.eq.1) then
+        nm = slcf_mesh(i)
+        m=>mesh(nm)
+        allocate(q(0:m%ibar,0:m%jbar,0:m%kbar,nv))
+        allocate(f(0:m%ibar,0:m%jbar,0:m%kbar))
+        write(*,*) "This shows Q and F are successfully allocated"
+        allocate(quantity(0:m%ibar,0:m%jbar,0:m%kbar,nv,time_dim))
+        write(*,*) "To this point, quantity is also allocated"
+        f = 0.
+        q = 0.
+    else
+        if (slcf_mesh(i).ne.nm) then
+            write(6,*) ' Error: all slices must have the same mesh'
+            stop
+        endif
+    endif
+
+    open(12,file=qfile,form='unformatted',status='old')
+    write(*,*) "Open SLCF file: ",trim(qfile)," @line 357"
+    read(12)
+    read(12)
+    read(12)
+    read(12) i1,i2,j1,j2,k1,k2                    
+
+    if (mv.eq.1) then
+        i10=i1 ; i20=i2 ; j10=j1 ; j20=j2 ; k10=k1 ; k20=k2
+        if (i1.eq.i2) ior_slcf = 1
+        if (j1.eq.j2) ior_slcf = 2
+        if (k1.eq.k2) ior_slcf = 3
+    else
+        if (i1.eq.i2 .and. i10.eq.i20) then
+            i1=i10
+            i2=i20
+        endif
+        if (j1.eq.j2 .and. j10.eq.j20) then
+            j1=j10
+            j2=j20
+        endif
+        if (k1.eq.k2 .and. k10.eq.k20) then
+            k1=k10
+            k2=k20
+        endif
+        if (((i1.ne.i10.or.i2.ne.i20).and.(i10.ne.i20)) .or. &
+            ((j1.ne.j10.or.j2.ne.j20).and.(j10.ne.j20)) .or. &
+            ((k1.ne.k10.or.k2.ne.k20).and.(k10.ne.k20))) then
+            write(6,*) ' Error: slice files are incompatible'
+            stop
+        endif
+    endif
+
+    ncount = 1
+    t1=ncount
+    allocate(time(time_dim))
+
+    ! read each slcf file with specific variable
+
+    Read_loop: do
+        read(12,end=99) time(ncount)
+        write(*,*) "Reading file: ",trim(qfile),"at simulation time: ",time(ncount)
+
+        read(12,end=99) (((f(i,j,k),i=i1,i2),j=j1,j2),k=k1,k2)
+!        if (time.lt.tbeg) cycle read_loop
+!        if (time.gt.tend) exit read_loop
+        t2=ncount
+        quantity(i1:i2,j1:j2,k1:k2,mv,ncount) = f(i1:i2,j1:j2,k1:k2)
+        q(i1:i2,j1:j2,k1:k2,mv) = q(i1:i2,j1:j2,k1:k2,mv)+ f(i1:i2,j1:j2,k1:k2)
+        if (ncount .ge. time_dim) then
+            write(*,"(A,I4,A)") " *** Fatal error: preset time_dim = ",time_dim," is smaller than needed."
+            write(*,"(A,f7.2)") " *** Try enlarge the parameter time_dim. Current time is: ",time(ncount)
+            write(*,"(A,I4)") " *** Current iteration reaches: ",ncount
+            stop
+        endif
+        ncount = ncount + 1
+    enddo Read_loop
+
+    99  close(12)
+    print *
+    write(*,*) "File ",trim(qfile)," has been read with T_end = ",t2
+
+    enddo varloop   ! varloop end -------------------------------------------------------
+
+    print *
+    write(*,*) "Debug point reached, program exit on demand"
+    print *
+    stop
+
+
+
+    !================ write out sample data to an ascii file =================================
+
+    i_sample=1000
+    ext1='.csv'
+    ext2='.nc '
+
+    write(6,*) 'Enter output file prefix: (the extension .csv and .nc will be added automatically)'
+    read(lu_in,'(a)') outfile
+    outfile1=trim(outfile)//trim(ext1)
+    outfile2=trim(outfile)//trim(ext2)
+    open(44,file=outfile1,form='formatted',status='unknown')
+
+    i3 = i2 - i1 + 1
+    j3 = j2 - j1 + 1
+    k3 = k2 - k1 + 1
+
+    ! one-dimensional section file
+
+    if (i1.eq.i2 .and. j1.eq.j2 .and. k1.ne.k2) then
+        write(frmt,'(a,i2.2,a)') "(1x,",nv,"(a,','),a)"
+        ! write header
+        write(44,frmt) 'z',(trim(slcf_label(is(l))),l=1,nv)
+        write(44,frmt) 'm',(trim(slcf_unit(is(l))),l=1,nv)
+        write(frmt,'(a,i2.2,a)') "(",nv,"(e12.5,','),e12.5)"
+        write(6,*) ' writing to file z-axis      ',trim(outfile1)
+        ! write data
+        loop1: do k=k1,k2,nsam
+        if (m%z(k).gt.zf .or. m%z(k).lt.zs) cycle loop1
+        if (zoffset_flag.eq.1.and.m%z(k)-zoffset.lt.0.0) cycle loop1
+        write(44,frmt) m%z(k)-zoffset,(q(i2,j2,k,l),l=1,nv)
+        enddo loop1
+    endif
+
+    if(i1.eq.i2.and.j1.ne.j2.and.k1.eq.k2) then
+        write(frmt,'(a,i2.2,a)') "(1x,",nv,"(a,','),a)"
+        write(44,frmt) 'y',(trim(slcf_label(is(l))),l=1,nv)
+        write(44,frmt) 'm',(trim(slcf_unit(is(l))),l=1,nv)
+        write(frmt,'(a,i2.2,a)') "(",nv,"(e12.5,','),e12.5)"
+        write(6,*) ' writing to file y-axis      ',trim(outfile1)
+        loop2: do j=j1,j2,nsam
+        if (m%y(j).gt.yf .or. m%y(j).lt.ys) cycle loop2
+        write(44,frmt) m%y(j),(q(i2,j,k2,l),l=1,nv)
+        enddo loop2
+    endif
+
+    if(i1.ne.i2.and.j1.eq.j2.and.k1.eq.k2) then
+        write(frmt,'(a,i2.2,a)') "(1x,",nv,"(a,','),a)"
+        write(44,frmt) 'x',(trim(slcf_label(is(l))),l=1,nv)
+        write(44,frmt) 'm',(trim(slcf_unit(is(l))),l=1,nv)
+        write(frmt,'(a,i2.2,a)') "(",nv,"(e12.5,','),e12.5)"
+        write(6,*) ' writing to file x-axis      ',trim(outfile1)
+        loop3: do i=i1,i2,nsam
+        if (m%x(i).gt.xf .or. m%x(i).lt.xs) cycle loop3
+        write(44,frmt) m%x(i),(q(i,j2,k2,l),l=1,nv)
+        enddo loop3
+    endif
+
+    ! two-dimensional section file
+
+    if(i1.eq.i2.and.j1.ne.j2.and.k1.ne.k2) then
+        write(frmt,'(a,i2.2,a)') "(1x,",nv+1,"(a,','),a)"
+        write(44,frmt) 'y','z',(trim(slcf_label(is(l))),l=1,nv)
+        write(44,frmt) 'm','m',(trim(slcf_unit(is(l))),l=1,nv)
+        write(frmt,'(a,i2.2,a)') "(",nv+1,"(e12.5,','),e12.5)"
+        write(6,*) ' writing y-z surface data to file  ',trim(outfile1)
+        do k=k1,k2,nsam
+        loop4: do j=j1,j2,nsam
+        if (m%y(j).gt.yf .or. m%y(j).lt.ys) cycle loop4
+        if (m%z(k).gt.zf .or. m%z(k).lt.zs) cycle loop4
+        write(44,frmt) m%y(j),m%z(k)-zoffset,(q(i2,j,k,l),l=1,nv)
+        enddo loop4
+        enddo
+    endif
+
+    if (j1.eq.j2.and.i1.ne.i2.and.k1.ne.k2) then
+        write(frmt,'(a,i2.2,a)') "(1x,",nv+1,"(a,','),a)"
+        write(44,frmt) 'x','z',(trim(slcf_label(is(l))),l=1,nv)
+        write(44,frmt) 'm','m',(trim(slcf_unit(is(l))),l=1,nv)
+        write(frmt,'(a,i2.2,a)') "(",nv+1,"(e12.5,','),e12.5)"
+        write(6,*) ' writing x-z surface data to file  ',trim(outfile1)
+        do k=k1,k2,nsam
+        loop5: do i=i1,i2,nsam
+        if (m%x(i).gt.xf .or. m%x(i).lt.xs) cycle loop5
+        if (m%z(k).gt.zf .or. m%z(k).lt.zs) cycle loop5
+        write(44,frmt) m%x(i),m%z(k)-zoffset,(q(i,j2,k,l),l=1,nv)
+        enddo loop5
+        enddo
+    endif
+
+    if(k1.eq.k2.and.i1.ne.i2.and.j1.ne.j2) then
+        write(frmt,'(a,i2.2,a)') "(1x,",nv+1,"(a,','),a)"
+        write(44,frmt) 'x','y',(trim(slcf_label(is(l))),l=1,nv)
+        write(44,frmt) 'm','m',(trim(slcf_unit(is(l))),l=1,nv)
+        write(frmt,'(a,i2.2,a)') "(",nv+1,"(e12.5,','),e12.5)"
+        write(6,*) ' writing x-y surface data to file  ',trim(outfile1)
+        do j=j1,j2,nsam
+        loop6: do i=i1,i2,nsam
+        if (m%x(i).gt.xf .or. m%x(i).lt.xs) cycle loop6
+        if (m%y(j).gt.yf .or. m%y(j).lt.ys) cycle loop6
+        write(44,frmt) m%x(i),m%y(j),(q(i,j,k2,l),l=1,nv)
+        enddo loop6
+        enddo
+    endif
+
+    ! three-dimensional section file
+
+    if (i1.ne.i2.and.j1.ne.j2.and.k1.ne.k2) then
+        write(frmt,'(a,i2.2,a)') "(1x,",nv+2,"(a,','),a)"
+        write(44,frmt) 'x','y','z',(trim(slcf_label(is(l))),l=1,nv)
+        write(44,frmt) 'm','m','m',(trim(slcf_unit(is(l))),l=1,nv)
+        write(frmt,'(a,i2.2,a)') "(",nv+2,"(e12.5,','),e12.5)"
+        write(6,*) ' writing 3-d body data to file ',trim(outfile1)
+        do k=k1,k2,nsam
+        do j=j1,j2,nsam
+        loop7: do i=i1,i2,nsam
+        if (m%x(i).gt.xf .or. m%x(i).lt.xs) cycle loop7
+        if (m%y(j).gt.yf .or. m%y(j).lt.ys) cycle loop7
+        if (m%z(k).gt.zf .or. m%z(k).lt.zs) cycle loop7
+        write(44,frmt) m%x(i),m%y(j),m%z(k),(q(i,j,k,l),l=1,nv)
+        enddo loop7
+        enddo
+        enddo
+    endif
+
+    close(44)
+
+    stop
+end program fdspost
+
+! ################### Subroutine Part #############################
+
+! *********************** search *******************************
+
+subroutine search(string,length,lu,ierr)
+
+    implicit none
+    character(*), intent(in) :: string
+    integer, intent(out) :: ierr
+    integer, intent(in) :: lu, length
+    character(20) :: junk
+
+    search_loop: do 
+    read(lu,'(a)',end=10) junk
+    if (junk(1:length).eq.string(1:length)) exit search_loop
+    enddo search_loop
+
+    ierr = 0
+    return
+
+    10 ierr = 1
+    return
+
+end subroutine search
+
+subroutine search2(string,length,string2,length2,lu,ierr,choice)
+
+    implicit none
+    character(*), intent(in) :: string,string2
+    character(*), intent(out) :: choice
+    integer, intent(out) :: ierr
+    integer, intent(in) :: lu, length, length2
+    character(20) :: junk
+
+    search_loop: do 
+    read(lu,'(a)',end=10) junk
+    if (junk(1:length).eq.string(1:length).or.junk(1:length2).eq.string2(1:length2)) then
+        if (junk(1:length) .eq.string(1:length))   choice = junk(1:length)
+        if (junk(1:length2).eq.string2(1:length2)) choice = junk(1:length2)
+        exit search_loop
+    endif
+    enddo search_loop
+
+    ierr = 0
+    return
+
+    10 ierr = 1
+    return
+
+end subroutine search2
+
+! *********************** parse *******************************
+
+subroutine parse(buffer,sb_toks,se_toks,n_toks)
+
+    ! parse buffer into a series of tokens each separated by blanks
+
+    implicit none
+    character(*), intent(inout) :: buffer
+    integer, dimension(*), intent(out) :: sb_toks, se_toks
+    integer, intent(out) :: n_toks
+    integer :: i, intok, inquote, lenbuf
+    character(len=1) :: c
+
+    n_toks=0
+    lenbuf = len(trim(buffer))
+    if(lenbuf.eq.0)return ! buffer is blank so there are no tokens
+    intok=0
+    inquote=0
+    do i = 1, lenbuf
+    if(intok.eq.0)then  
+        if(buffer(i:i).ne.' ')then  ! beginning of a new token since previous char
+            intok=1                   ! was not in a token and this one is
+            n_toks=n_toks + 1
+            sb_toks(n_toks)=i
+            if(buffer(i:i).eq."'")inquote=1
+        endif
+    else
+        if(inquote.eq.1)then
+            if(buffer(i:i).eq."'")then
+                se_toks(n_toks)=i
+                intok=0
+                inquote=0
+            endif
+        endif
+        if(buffer(i:i).eq.' ')then
+            se_toks(n_toks)=i-1       ! previous char was in a token, this one is not
+            intok=0                   ! so previous char is end of token
+        endif
+    endif
+    end do
+    if(buffer(lenbuf:lenbuf).ne.' ')se_toks(n_toks)=lenbuf ! last char in buffer is not blank
+    ! so it is end of last token
+
+    ! strip out single or double quotes if present
+    do i = 1, n_toks
+    c = buffer(sb_toks(i):sb_toks(i))
+    if(c.eq."'")sb_toks(i)=sb_toks(i)+1
+    c = buffer(se_toks(i):se_toks(i))
+    if(c.eq."'")se_toks(i)=se_toks(i)-1
+    if(se_toks(i).lt.sb_toks(i))then
+        se_toks(i)=sb_toks(i)
+        buffer(sb_toks(i):se_toks(i))=' '
+    endif
+    end do
+end subroutine parse
+
+! *********************** toupper *******************************
+
+subroutine toupper(bufferin, bufferout)
+    character(len=*), intent(in) :: bufferin
+    character(len=*), intent(out) :: bufferout
+    character(len=1) :: c
+
+    integer :: lenbuf, i
+
+    lenbuf=min(len(trim(bufferin)),len(bufferout))
+    do i = 1, lenbuf
+    c = bufferin(i:i)
+    if(c.ge.'a'.and.c.le.'z')c=char(ichar(c)+ichar('a')-ichar('a'))
+    bufferout(i:i)=c
+    end do
+
+end subroutine toupper
