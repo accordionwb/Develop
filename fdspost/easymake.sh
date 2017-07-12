@@ -2,6 +2,9 @@
 make intel_linux_64
 rm -rf ~/intel
 
+batchrun=1
+
+
 # This file try to make fdspost usage easier
 # fdspost input explanation:
 #
@@ -35,22 +38,35 @@ rm -rf ~/intel
 #======================================================
 #
 # Script batch process
-Workdir=/home/wangbing/Videos/Spectra_009/
+Workdir=/home/wangbing/fdsout/Spectra_029/
 
-CHID='Spectra_009'
+CHID='Spectra_029'
 
 Domain_sel='n'
 
-num_of_var=1
+sel_quantity=3
 
-index_of_var=5
+sel_plate=3
+
+provide_offset='y'
+
+let xoffset=-60
+let yoffset=-60
+let zoffset=0
 
 cd $Workdir
-fdspost << ieof
+
+if [ $batchrun -eq 1 ]
+then
+fds2slcf << ieof
 $CHID
 $Domain_sel
-$num_of_var
-$index_of_var
+$sel_quantity
+$sel_plate
+$provide_offset
+$xoffset  $yoffset  $zoffset
 ieof
-
+else
+fds2slcf
+fi
 

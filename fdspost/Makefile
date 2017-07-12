@@ -1,6 +1,5 @@
-SRC = src
-FILTERC =
-FILTERF =
+SRCDir = src
+target = fds2slcf
 
 VPATH = src/
 BIN =bin
@@ -8,7 +7,7 @@ BIN =bin
 
 # Definition of the OBJCTSect variables
 
-OBJCTS = $(SRC)/fdspost.o
+OBJCTS = $(SRCDir)/$(target).o
 
 #*** General Purpose Rules ***
 
@@ -29,7 +28,7 @@ no_target:
 
 gnu_linux_64 : FFLAGS    = -O0 -m64 -ffree-form -frecord-marker=4  $(GITINFOGNU)
 gnu_linux_64 : FC        = gfortran
-gnu_linux_64 : exe       = $(BIN)/fdspost
+gnu_linux_64 : exe       = $(BIN)/$(target)
 
 gnu_linux_64 : $(OBJCTS)
 	$(FC) -o $(exe) $(OBJCTS)
@@ -39,7 +38,7 @@ gnu_linux_64 : $(OBJCTS)
 
 gnu_osx_64 : FFLAGS    = -O0 -m64 -ffree-form -frecord-marker=4  $(GITINFOGNU)
 gnu_osx_64 : FC        = gfortran
-gnu_osx_64 : exe       = $(BIN)/fdspost
+gnu_osx_64 : exe       = $(BIN)/$(target)
 
 gnu_osx_64 : $(OBJCTS)
 	$(FC) -o $(exe) $(OBJCTS)
@@ -51,7 +50,7 @@ gnu_osx_64 : $(OBJCTS)
 
 intel_linux_64 : FFLAGS    = -O2 -m64 
 intel_linux_64 : FC        = ifort
-intel_linux_64 : exe       = $(BIN)/fdspost
+intel_linux_64 : exe       = $(BIN)/$(target)
 
 intel_linux_64 : $(OBJCTS)
 	$(FC) -o $(exe) $(OBJCTS)
@@ -61,7 +60,7 @@ intel_linux_64 : $(OBJCTS)
 
 intel_osx_64 : FFLAGS    = -O2 -m64 $(GITINFO)
 intel_osx_64 : FC        = ifort
-intel_osx_64 : exe       = $(BIN)/fdspost
+intel_osx_64 : exe       = $(BIN)/$(target)
 
 intel_osx_64 : $(OBJCTS)
 	$(FC) -o $(exe)  -mmacosx-version-min=10.4 $(OBJCTS)

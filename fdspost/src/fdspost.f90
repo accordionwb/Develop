@@ -19,11 +19,11 @@ program fdspost
     integer, parameter :: time_dim = 1010
     integer :: ierr, NMESHES, nm, noc, i, j, k, l
     integer :: idum, ifile, nsam, nv, mv
-    integer :: i1, i2, j1, j2, k1, k2, t1, t2, i3, j3, k3
+    integer :: i1, i2, j1, j2, k1, k2, t1, t2, i3, j3, k3  ! dimension
     integer :: i10, i20, j10, j20, k10, k20
     integer :: ncount, ior_input, npatch, ijbar, jkbar
     integer :: ii, nxp, nyp, nzp, n, i_sample
-    real(fb) :: xs, xf, ys, yf, zs, zf
+    real(fb) :: xs, xf, ys, yf, zs, zf  ! user defined bounds
     real(fb) :: d1, d2, d3, d4, tbeg, tend
     character(256) :: auto_slice_label
     integer :: auto_slice_flag, n_auto_slices, iauto, iztemp
@@ -65,7 +65,7 @@ program fdspost
     integer :: nslice_labels, slice_exist
     real(fb), dimension(file_dim) :: x1, x2, y1, y2, z1, z2
     integer,  dimension(60) :: ib,is
-    integer,  dimension(file_dim) :: pl3d_mesh,slcf_mesh,bndf_mesh
+    integer,  dimension(file_dim) :: slcf_mesh
     logical, dimension(file_dim) :: file_exists
     integer :: rcode
     integer :: nfiles_exist
@@ -226,7 +226,6 @@ program fdspost
 
     ! extract slcf data
 
-    nslice_labels=0
     slcf_label = 'null'
 
 !    if (zoffset_flag.eq.0) then
@@ -248,23 +247,25 @@ program fdspost
     call search2('SLCF',4,'SLCC',4,11,ierr,choice)
     if (ierr.eq.1) exit search_slcf
     backspace(11)
-    read(11,*) junk,slcf_mesh(i)
-    read(11,'(a)') slcf_file(i)
-    read(11,'(a)') slcf_text(i)
+    read(11,*) junk,slcf_mesh(i)  ! Slcf dimensions
+    read(11,'(a)') slcf_file(i)  ! slcf file name
+    read(11,'(a)') slcf_text(i)  ! slcf variable defination
 
     ! create unique list of slice types      
 
+    nslice_labels=0
     slice_exist=0
-    do ii=1, nslice_labels
+    
+    do ii=1, nslice_labels ! loop over labels kind
     if(trim(slcf_text(i)).eq.slice_labels(ii))then
-        slice_exist=1
-        exit  ! exit current do loop
+        slice_exist=1 ! set flag slice already recorded
+        exit  
     endif
     enddo
 
-    if (slice_exist.eq.0) then
-        nslice_labels=nslice_labels+1
-        slice_labels(nslice_labels)=trim(slcf_text(i))
+    if (slice_exist.eq.0) then ! new slice
+        nslice_labels=nslice_labels+1  ! add record 
+        slice_labels(nslice_labels)=trim(slcf_text(i)) ! Record new slice variable
     endif
 
 
@@ -304,8 +305,15 @@ program fdspost
         write(6,*)"there are no slice files to convert"
         stop
     endif
+    
+	N_AUTO_SLICES=0
+    write(6,*)' Enter slice file type index' ! list individual slice kinds
+    DO II=1, NSLICE_LABELS
+        write(6,'(2x,I3,1x,A)')II,TRIM(SLICE_LABELS(II))
+    ENDDO
+    READ(LU_IN,'(I3)')II  ! record user choice of specific slice
 
-
+    
     write(6,*)'How many variables to read:'
     read(lu_in,*) nv   ! ---- key iteration mv = 1:nv
     print *
@@ -401,7 +409,7 @@ program fdspost
 
     Read_loop: do
         read(12,end=99) time(ncount)
-        write(*,*) "Reading file: ",trim(qfile),"at simulation time: ",time(ncount)
+     !   write(*,*) "Reading file: ",trim(qfile),"at simulation time: ",time(ncount)
 
         read(12,end=99) (((f(i,j,k),i=i1,i2),j=j1,j2),k=k1,k2)
 !        if (time.lt.tbeg) cycle read_loop
@@ -424,10 +432,6 @@ program fdspost
 
     enddo varloop   ! varloop end -------------------------------------------------------
 
-    print *
-    write(*,*) "Debug point reached, program exit on demand"
-    print *
-    stop
 
 
 
@@ -437,6 +441,7 @@ program fdspost
     ext1='.csv'
     ext2='.nc '
 
+    print *
     write(6,*) 'Enter output file prefix: (the extension .csv and .nc will be added automatically)'
     read(lu_in,'(a)') outfile
     outfile1=trim(outfile)//trim(ext1)
