@@ -92,21 +92,22 @@ implicit none
 
     ! parse command line arguments
 
-    if (filein.eq.'stdin') then
-        lu_in=5
-    else
-        lu_in=7
-        inquire(file=filein,exist=exists)
-        if (.not.exists) then
-            write(6,*)"*** fatal Error: the file: ",trim(filein), " does not exist"
-            stop
-        endif
-        open(lu_in,file=filein,status='old',form='formatted')
-    endif
+!    if (filein.eq.'stdin') then
+!        lu_in=5
+!    else
+!        lu_in=7
+!        inquire(file=filein,exist=exists)
+!        if (.not.exists) then
+!            write(6,*)"*** fatal Error: the file: ",trim(filein), " does not exist"
+!            stop
+!        endif
+!        open(lu_in,file=filein,status='old',form='formatted')
+!    endif
 
-    write(6,*) ' Enter job id string (chid):'
+    print *
+    write(*,*) ' Enter job id string (chid):'
 
-    read(lu_in,'(a)') chid
+    read(*,'(a)') chid
 
     ! check to see if the .smv file exists
 
@@ -185,7 +186,7 @@ implicit none
 		  write(6,*) '   y - domain size is limited'
 	    write(6,*) '   n - domain size is not limited'
 	    write(6,*) '   z - domain size is not limited and z levels are offset'
-	    read(lu_in,'(a)') ans
+	    read(*,'(a)') ans
 	    print *
     else
 			ans = 'n'
@@ -194,7 +195,7 @@ implicit none
     call toupper(ans,ans)
     if (ans(1:1).eq.'y') then
         write(6,*) ' Enter min/max x, y and z'
-        read(lu_in,*) xs,xf,ys,yf,zs,zf
+        read(*,*) xs,xf,ys,yf,zs,zf
     else
         xs = -100000.
         xf =  100000.
@@ -318,7 +319,7 @@ implicit none
     DO II=1, nslice_labels
        write(6,'(2x,I3,1x,A)')II,TRIM(slice_labels(II))
     ENDDO
-    READ(LU_IN,'(I3)') iuser_label
+    READ(*,*) iuser_label
     AUTO_SLICE_LABEL=TRIM(slice_labels(iuser_label))
     auto_slice_unit=trim(slice_units(iuser_label))
 
@@ -328,7 +329,7 @@ implicit none
     write(*,'(3X,A)')  "1   Y-Z Plate"
     write(*,'(3X,A)')  "2   X-Z Plate"
     write(*,'(3X,A)')  "3   X-Y Plate"
-    read(lu_in,*) StationID
+    read(*,*) StationID
     print *
     write(*,*) "----The original Mesh sequence is: ----"
     
@@ -360,6 +361,10 @@ implicit none
            write(6,'(3(3X,A,I3))') "The mesh size on each axis is: NX =",m%ibar,", NY=",m%jbar,", NZ=",m%kbar
            auto_slice_lists(n_auto_slices) = I
         ENDDO boundloop1
+        if (n_auto_slices .eq. 0) then
+					write(*,*) "*** There is no slice found on Y-Z plate, Program Stop! "
+					stop
+				endif
         
         case(2) ! X-Z plate
         boundloop2: DO I=1,nfiles_exist ! loop over slice files, equal to (I) in Search_slcf
@@ -385,7 +390,10 @@ implicit none
            write(6,'(3(3X,A,I3))') "The mesh size on each axis is: IX =",m%ibar,", IY=",m%jbar,", IZ=",m%kbar
            auto_slice_lists(n_auto_slices) = I
         ENDDO boundloop2
-        
+        if (n_auto_slices .eq. 0) then
+					write(*,*) "*** There is no slice found on X-Z plate, Program Stop! "
+					stop
+				endif
         
         case(3) ! X-Y plateo
         ztemp=0.0
@@ -413,6 +421,10 @@ implicit none
            write(6,'(3(3X,A,I3))') "The mesh size on each axis is: IX =",m%ibar,", IY=",m%jbar,", IZ=",m%kbar
            auto_slice_lists(n_auto_slices) = I
         ENDDO boundloop3
+        if (n_auto_slices .eq. 0) then
+					write(*,*) "*** There is no slice found on X-Y plate, Program Stop! "
+					stop
+				endif
         
     end Select
     
@@ -427,11 +439,11 @@ implicit none
     
 	print *	
     write(*,*) "Need to adjust the coordinates offset? (y/n)"
-    read(lu_in,*) seq
+    read(*,*) seq
     
     if (seq .eq. 'y' .or. seq .eq. 'Y') then
 		write(*,*) "Provide approprate coordinates offset (xoff,yoff,zoff)"
-		read(lu_in,*) ixoff,iyoff,izoff
+		read(*,*) ixoff,iyoff,izoff
 		print *
 		write(*,*) "----New mesh coordinates after adjustment----"
 		
@@ -636,6 +648,7 @@ implicit none
     
     enddo Auto_list
 		
+		print *
 		write(*,*) "Total time step is:", t2
     
     ! --------------------------------------------------------------------------
@@ -647,7 +660,7 @@ implicit none
     ext1='.csv'
     ext2='.bin'
     write(*,*) "Enter output directory: (default is current folder)"
-    read(lu_in,'(A)') outfile
+    read(*,'(A)') outfile
 		
 		call nospace(auto_slice_label,nonspace)
     outfile1=trim(outfile)//trim(chid)//'_'//trim(nonspace)//trim(ext1)

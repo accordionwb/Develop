@@ -44,10 +44,10 @@ single=1
 #------------------------------------------
 
 if [ $single -eq 1 ] ; then
-CHID='Spectra_029'
+CHID='Spectra_001'
 
 Workdir="/home/wangbing/fdsout/$CHID"
-outdir='/home/wangbing/fdsout/testo/' # Must end with '/'
+outdir='/home/wangbing/fdsout/test001/' # Must end with '/'
 if ! test -d $outdir  ; then
   mkdir -p $outdir
 fi
@@ -60,7 +60,7 @@ let yoffset=-60
 let zoffset=0
 cd $Workdir
 
-for sel_quantity in {1..5} 
+for sel_quantity in {2,3,4}
 do
 # Execute program
 
