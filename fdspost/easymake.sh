@@ -3,6 +3,8 @@ make intel_linux_64
 rm -rf ~/intel
 
 batchrun=1
+binary=fds2slcf
+single=1
 
 
 # This file try to make fdspost usage easier
@@ -37,36 +39,82 @@ batchrun=1
 # 
 #======================================================
 #
-# Script batch process
-Workdir=/home/wangbing/fdsout/Spectra_029/
+#------------------------------------------
+# Script single process
+#------------------------------------------
 
+if [ $single -eq 1 ] ; then
 CHID='Spectra_029'
 
-Domain_sel='n'
-
-sel_quantity=3
+Workdir="/home/wangbing/fdsout/$CHID"
+outdir='/home/wangbing/fdsout/testo/' # Must end with '/'
+if ! test -d $outdir  ; then
+  mkdir -p $outdir
+fi
 
 sel_plate=3
-
 provide_offset='y'
 
 let xoffset=-60
 let yoffset=-60
 let zoffset=0
-
 cd $Workdir
 
-if [ $batchrun -eq 1 ]
-then
-fds2slcf << ieof
+for sel_quantity in {1..5} 
+do
+# Execute program
+
+if [ $batchrun -eq 1 ] ; then
+  $binary << ieof
 $CHID
-$Domain_sel
 $sel_quantity
 $sel_plate
 $provide_offset
 $xoffset  $yoffset  $zoffset
+$outdir
 ieof
 else
-fds2slcf
+  $binary
+fi
+done
+fi
+
+#------------------------------------------
+# Script batch process
+#------------------------------------------
+if [ $single -eq 0 ] ; then
+resultdir='/home/wangbing/FDS/Spectra'
+allfolders=`ls $resultdir`
+
+outdir='/home/wangbing/fdsout/testo'
+if ! test -d $outdir  ; then
+  mkdir -p $outdir
+fi
+
+for folder in $allfoders
+do
+  workingdir=$resultdir/$folder
+  chid=$folder
+  sel_plate=3
+  provide_offset='y'
+  let xoffset=-60
+  let yoffset=-60
+  let zoffset=0
+  cd $workingdir
+  for sel_quantity in {1..5}
+  do
+    echo "quantity is $sel_quantity"
+
+$binary << ieof
+$chid
+$sel_quantity
+$sel_plate
+$provide_offset
+$xoffset  $yoffset  $zoffset
+$outdir
+ieof
+
+done
+done
 fi
 

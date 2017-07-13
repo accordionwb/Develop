@@ -14,17 +14,22 @@ implicit none
     character(255), parameter :: f2aversion='2.1.0'
     integer, parameter :: fb = selected_real_kind(6)
     integer, parameter :: file_dim = 500
-    integer, parameter :: time_dim = 1010
-    integer :: ierr, NMESHES, nm, noc, i, j, k, l, ix, iy, iz
+    integer, parameter :: time_dim = 1001
+    integer :: ierr, NMESHES, nm, noc, i, j, k, l, ix, iy, iza, nt
+    integer :: kk
     integer :: idum, ifile, nsam, nv, mv
     integer :: imin,imax,jmin,jmax,kmin,kmax
     integer :: i1, i2, j1, j2, k1, k2, t1, t2, i3, j3, k3  ! dimension
+    integer :: iix,iiy,iiz,nix,niy,niz
     integer :: i10, i20, j10, j20, k10, k20
     integer :: ncount, ior_input, npatch, ijbar, jkbar
     integer :: ii, nxp, nyp, nzp, n, i_sample,jj
+    integer :: allerr,iuser_label,idummy
+    integer :: nqx1,nqy1,nqz1,nqx2,nqy2,nqz2
     real(fb) :: xs, xf, ys, yf, zs, zf  ! user defined bounds
     real(fb) :: d1, d2, d3, d4, tbeg, tend
-    character(256) :: auto_slice_label
+    real(fb), dimension(file_dim) :: xtemp,ytemp,ztemp
+    character(256) :: auto_slice_label,auto_slice_unit
     integer :: auto_slice_flag, n_auto_slices, iauto, iztemp
     integer, dimension(1) :: izmin1,ixmin1,iymin1
     integer :: izmin,ixmin,iymin,ixoff,iyoff,izoff
@@ -49,17 +54,18 @@ implicit none
     real(fb), allocatable, dimension(:,:,:,:) :: quantity
     real(fb), allocatable, dimension(:,:,:,:) :: q
     real(fb), allocatable, dimension(:,:,:) :: f
-    real(fb), allocatable, dimension(:) :: time
+    real(fb), allocatable, dimension(:) :: time,cqx,cqy,cqz
     logical, allocatable, dimension(:,:,:) :: already_used
-    logical :: new_plot3d=.true.
+    logical :: new_plot3d=.true., iflist=.false., iffind
     integer ior_slcf, stationID
     character(1) :: ans,seq
     character(4) :: ext1, ext2
     character(4) :: choice
     character(30) :: unitjunk
-    character(256) gridfile,qname,chid,qfile,junk,frmt,outfile,outfile1,outfile2,slcf_label_dummy
+    character(256) gridfile,qname,chid,qfile,junk,frmt,slcf_label_dummy
+    character(256) outfile, outfile1, outfile2, nonspace
     character(256), dimension(file_dim) :: pl3d_file,slcf_file,bndf_file,slcf_text,bndf_text,slcf_unit,bndf_unit,slcf_label
-    character(256), dimension(file_dim) :: slice_labels
+    character(256), dimension(file_dim) :: slice_labels, slice_units
     character(20), dimension(file_dim) :: bndf_type
     character(20) :: bndf_type_chosen
     integer :: nslice_labels, slice_exist, new_slice_seq
@@ -114,8 +120,8 @@ implicit none
     ! open the .smv file
 
     open(11,file=gridfile,status='old',form='formatted')
+    print*
     write(*,*) "Open SMV file: ",trim(gridfile)
-    print *
 
 
     ! determine the number of meshes
@@ -128,8 +134,7 @@ implicit none
         NMESHES = 1
     else
         read(11,*) NMESHES
-        write(*,*) "Number of mesh is: ",NMESHES
-        print *
+        write(*,'(A,I3)') "Number of mesh is: ",NMESHES
     endif
 
     allocate(mesh(NMESHES))
@@ -175,12 +180,17 @@ implicit none
 
     enddo read_smv
     
-    write(6,*) ' domain selection:'
-    write(6,*) '   y - domain size is limited'
-    write(6,*) '   n - domain size is not limited'
-    write(6,*) '   z - domain size is not limited and z levels are offset'
-    read(lu_in,'(a)') ans
-    print *
+		if (iflist) then
+			write(6,*) ' domain selection:'
+		  write(6,*) '   y - domain size is limited'
+	    write(6,*) '   n - domain size is not limited'
+	    write(6,*) '   z - domain size is not limited and z levels are offset'
+	    read(lu_in,'(a)') ans
+	    print *
+    else
+			ans = 'n'
+    endif
+    
     call toupper(ans,ans)
     if (ans(1:1).eq.'y') then
         write(6,*) ' Enter min/max x, y and z'
@@ -193,6 +203,7 @@ implicit none
         zs = -100000.
         zf =  100000.
     endif
+    
 
     ! if ans is z or z then subtract zoffset from z data (for multi-level cases)
 
@@ -256,10 +267,12 @@ implicit none
         y2(i)=m%y(j2)
         z1(i)=m%z(k1)
         z2(i)=m%z(k2)
-    
-        write(6,'(i3,1x,a,1x,a)')i,trim(slcf_text(i)),trim(slcf_file(i))
-        write(6,'(3x,a,6(1x,f8.2))')'slice bounds:',m%x(i1),m%x(i2),m%y(j1),m%y(j2),m%z(k1),m%z(k2)
-        write(6,*) 
+        
+        if (iflist) then
+					write(6,'(i3,1x,a,1x,a)')i,trim(slcf_text(i)),trim(slcf_file(i))
+   		    write(6,'(3x,a,6(1x,f8.2))')'slice bounds:',m%x(i1),m%x(i2),m%y(j1),m%y(j2),m%z(k1),m%z(k2)
+   		    write(6,*) 
+        endif
         
         ! TASK 2: Create unique list of slice types      
     
@@ -274,15 +287,16 @@ implicit none
     
         if (slice_exist.eq.0) then ! new slice
             nslice_labels=nslice_labels+1  ! add record 
-            slice_labels(nslice_labels)=trim(slcf_text(i)) ! Record new slice variable
+            slice_labels(nslice_labels)=trim(slcf_text(i)) ! Record new slice voariable
+            slice_units(nslice_labels)=trim(slcf_unit(i))
         endif
 
     Enddo Search_slcf
     
     ! Error code: slice file not found
-    write(*,*) "nfiles_exist =",nfiles_exist
-    print *
+    write(*,'(A,I3)') "Number of slcf files: ",nfiles_exist
     IF (nfiles_exist.EQ.0)THEN
+				print *
         WRITE(6,*)"There are no slice files to convert"
         STOP
     ENDIF
@@ -299,12 +313,14 @@ implicit none
     
     ! Task 1: Print the unique slice variable list.
     N_AUTO_SLICES=0
+    print *
     write(6,*)' Enter slice file type index'
     DO II=1, nslice_labels
        write(6,'(2x,I3,1x,A)')II,TRIM(slice_labels(II))
     ENDDO
-    READ(LU_IN,'(I3)')II
-    AUTO_SLICE_LABEL=TRIM(slice_labels(II))
+    READ(LU_IN,'(I3)') iuser_label
+    AUTO_SLICE_LABEL=TRIM(slice_labels(iuser_label))
+    auto_slice_unit=trim(slice_units(iuser_label))
 
     ! Task 2: Select stationary dimension.
     print *
@@ -314,7 +330,7 @@ implicit none
     write(*,'(3X,A)')  "3   X-Y Plate"
     read(lu_in,*) StationID
     print *
-    write(*,*) "The original Mesh sequence is: "
+    write(*,*) "----The original Mesh sequence is: ----"
     
     n_auto_slices = 0
     
@@ -324,6 +340,19 @@ implicit none
         boundloop1: DO I=1,nfiles_exist ! loop over slice files, equal to (I) in Search_slcf
            IF(TRIM(AUTO_SLICE_LABEL).NE.TRIM(SLCF_TEXT(I))) CYCLE boundloop1
            IF(x2(I)-x1(I).GT.EPS)CYCLE boundloop1
+           
+					iix=0
+					do kk=1,nix
+					if (abs(xtemp(kk) - x1(I)) .lt. eps) then
+						iix=1
+						exit
+					endif
+					enddo
+           if (iix .eq. 0) then
+           nix=nix+1
+           xtemp(nix)=x1(I)
+           endif
+           
            n_auto_slices = n_auto_slices + 1
            nm=slcf_mesh(I)
            m=>mesh(nm)
@@ -336,6 +365,19 @@ implicit none
         boundloop2: DO I=1,nfiles_exist ! loop over slice files, equal to (I) in Search_slcf
            IF(TRIM(AUTO_SLICE_LABEL).NE.TRIM(SLCF_TEXT(I))) CYCLE boundloop2
            IF(y2(I)-y1(I).GT.EPS)CYCLE boundloop2
+           
+					iiy=0
+					do kk=1,niy
+					if (abs(ytemp(kk) - y1(I)) .lt. eps) then
+						iiz=1
+						exit
+					endif
+					enddo
+           if (iiy .eq. 0) then
+           niy=niy+1
+           ytemp(niy)=x1(I)
+           endif
+           
            n_auto_slices = n_auto_slices + 1
            nm=slcf_mesh(I)
            m=>mesh(nm)
@@ -344,10 +386,26 @@ implicit none
            auto_slice_lists(n_auto_slices) = I
         ENDDO boundloop2
         
-        case(3) ! X-Y plate
+        
+        case(3) ! X-Y plateo
+        ztemp=0.0
+        niz=0
         boundloop3: DO I=1,nfiles_exist ! loop over slice files, equal to (I) in Search_slcf
            IF(TRIM(AUTO_SLICE_LABEL).NE.TRIM(SLCF_TEXT(I))) CYCLE boundloop3
            IF(z2(I)-z1(I).GT.EPS)CYCLE boundloop3
+           
+					iiz=0
+					do kk=1,niz
+					if (abs(ztemp(kk) - z1(I)) .lt. eps) then
+						iiz=1
+						exit
+					endif
+					enddo
+           if (iiz .eq. 0) then
+           niz=niz+1
+           ztemp(niz)=z1(I)
+           endif
+           
            n_auto_slices = n_auto_slices + 1
            nm=slcf_mesh(I)
            m=>mesh(nm)
@@ -356,7 +414,7 @@ implicit none
            auto_slice_lists(n_auto_slices) = I
         ENDDO boundloop3
         
-    end select
+    end Select
     
     ! Task 3:  Adjust mesh list sequence
     
@@ -375,7 +433,7 @@ implicit none
 		write(*,*) "Provide approprate coordinates offset (xoff,yoff,zoff)"
 		read(lu_in,*) ixoff,iyoff,izoff
 		print *
-		write(*,*) "New mesh coordinates after adjustment"
+		write(*,*) "----New mesh coordinates after adjustment----"
 		
 		! Select case
 		
@@ -384,16 +442,36 @@ implicit none
 		case(1)
 		do J=1,n_auto_slices
            I=auto_slice_lists(J)
-			ix1(J)=int(x1(I))
-			ix2(J)=int(x2(I))
+           do kk=1,nix
+           if (abs(xtemp(kk)-x1(I)).lt. eps) then
+           ix1(J)=kk;
+           ix2(J)=kk;
+           exit
+           endif
+           enddo
 			iy1(J)=int(y1(I))-iyoff
 			iy2(J)=int(y2(I))-iyoff
 			iz1(J)=int(z1(I))-izoff
 			iz2(J)=int(z2(I))-izoff
            write(6,'(A,I3,A,I3,5(a,f8.3))')"Seq:",J,", Mesh:",slcf_mesh(I),", ymin=",y1(I),", ymax=",y2(I),", zmin=",z1(I),", zmax=",z2(I),", x=",x1(I)
            write(6,'(3(3X,A,I3,2X,I3))') "The mesh size on each axis is: IX =",ix1(j),ix2(j),", IY=",iy1(j),iy2(j),", IZ=",iz1(j),iz2(J)
-           if (J .eq. n_auto_slices) then
-           allocate(quantity(0:ix2(J),0:iy2(J),0:iz2(J),time_dim))
+           if (J .eq. 1) then
+				nqx1=ix1(J)
+				nqy1=iy1(J)
+				nqz1=iz1(J)
+			endif
+            if (J .eq. n_auto_slices) then
+				nqx2=ix2(J)
+				nqy2=iy2(J)
+				nqz2=iz2(J)
+                allocate(quantity(nqx1:nqx2,nqy1:nqy2,nqz1:nqz2,0:time_dim),stat=allerr)
+                allocate(cqx(nqx1:nqx2))
+                allocate(cqy(nqy1:nqy2))
+                allocate(cqz(nqz1:nqz2))
+                if (allerr .eq. 0) then
+                print * 
+                write(*,"(A,3(I3,':',I3),I3,':',I6)") " Quantity allocated by dimension: ", nqx1, nqx2, nqy1,nqy2,nqz1,nqz2,0,time_dim
+                endif
            endif
         enddo
         
@@ -402,30 +480,71 @@ implicit none
            I=auto_slice_lists(J)
 			ix1(J)=int(x1(I))-ixoff
 			ix2(J)=int(x2(I))-ixoff
-			iy1(J)=int(y1(I))
-			iy2(J)=int(y2(I))
+           do kk=1,niy
+           if (abs(ytemp(kk)-y1(I)) .lt. eps) then
+           iy1(J)=kk;
+           iy2(J)=kk;
+           exit
+           endif
+           enddo
 			iz1(J)=int(z1(I))-izoff
 			iz2(J)=int(z2(I))-izoff
            write(6,'(A,I3,A,I3,5(a,f8.3))')"Seq:",J,", Mesh:",slcf_mesh(I),", xmin=",x1(I),", xmax=",x2(I),", zmin=",z1(I),", zmax=",z2(I),", y=",y1(I)
            write(6,'(3(3X,A,I3,2X,I3))') "The mesh size on each axis is: IX =",ix1(j),ix2(j),", IY=",iy1(j),iy2(j),", IZ=",iz1(j),iz2(J)
-           if (J .eq. n_auto_slices) then
-           allocate(quantity(0:ix2(J),0:iy2(J),0:iz2(J),time_dim))
+           if (J .eq. 1) then
+				nqx1=ix1(J)
+				nqy1=iy1(J)
+				nqz1=iz1(J)
+			endif
+            if (J .eq. n_auto_slices) then
+				nqx2=ix2(J)
+				nqy2=iy2(J)
+				nqz2=iz2(J)
+                allocate(quantity(nqx1:nqx2,nqy1:nqy2,nqz1:nqz2,0:time_dim),stat=allerr)
+                allocate(cqx(nqx1:nqx2))
+                allocate(cqy(nqy1:nqy2))
+                allocate(cqz(nqz1:nqz2))
+                if (allerr .eq. 0) then
+                print * 
+                write(*,"(A,3(I3,':',I3),I3,':',I6)") " Quantity allocated by dimension: ", nqx1, nqx2, nqy1,nqy2,nqz1,nqz2,0,time_dim
+                endif
            endif
         enddo
         
 		case(3)
+		
 		do J=1,n_auto_slices
-           I=auto_slice_lists(J)
+      I=auto_slice_lists(J)
 			ix1(J)=int(x1(I))-ixoff
 			ix2(J)=int(x2(I))-ixoff
 			iy1(J)=int(y1(I))-iyoff
 			iy2(J)=int(y2(I))-iyoff
-			iz1(J)=int(z1(I))
-			iz2(J)=int(z2(I))
-           write(6,'(A,I3,A,I3,5(a,f8.3))')"Seq:",J,", Mesh:",slcf_mesh(I),", xmin=",x1(I),", xmax=",x2(I),", ymin=",y1(I),", ymax=",y2(I),", z=",z1(I)
-           write(6,'(3(3X,A,I3,2X,I3))') "The mesh size on each axis is: IX =",ix1(j),ix2(j),", IY=",iy1(j),iy2(j),", IZ=",iz1(j),iz2(J)
-           if (J .eq. n_auto_slices) then
-           allocate(quantity(0:ix2(J),0:iy2(J),0:iz2(J),time_dim))
+           do kk=1,niz
+           if (abs(ztemp(kk)-z1(I)) .lt. eps) then
+           iz1(J)=kk;
+           iz2(J)=kk;
+           exit
+           endif
+           enddo
+      write(6,'(A,I3,A,I3,5(a,f8.3))')"Seq:",J,", Mesh:",slcf_mesh(I),", xmin=",x1(I),", xmax=",x2(I),", ymin=",y1(I),", ymax=",y2(I),", z=",z1(I)
+      write(6,'(3(3X,A,I3,2X,I3))') "The mesh size on each axis is: IX =",ix1(j),ix2(j),", IY=",iy1(j),iy2(j),", IZ=",iz1(j),iz2(J)
+      if (J .eq. 1) then
+				nqx1=ix1(J)
+				nqy1=iy1(J)
+				nqz1=iz1(J)
+			endif
+      if (J .eq. n_auto_slices) then
+				nqx2=ix2(J)
+				nqy2=iy2(J)
+				nqz2=iz2(J)
+           allocate(quantity(nqx1:nqx2,nqy1:nqy2,nqz1:nqz2,0:time_dim),stat=allerr)
+           allocate(cqx(nqx1:nqx2))
+           allocate(cqy(nqy1:nqy2))
+           allocate(cqz(nqz1:nqz2))
+           if (allerr .eq. 0) then
+           print * 
+           write(*,"(A,3(I3,':',I3),I3,':',I6)") " Quantity allocated by dimension: ", nqx1, nqx2, nqy1,nqy2,nqz1,nqz2,0,time_dim
+           endif
            endif
         enddo
         
@@ -440,15 +559,15 @@ implicit none
     !#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-##-#-#-#-#-#-#-#-#-#-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
     !
 	! LOOP:  Read through N_Auto_Slices and write to output file
-	!   	1. Calculate the total dimension for output
-	!		2. Read and write file to output
+	!   	1. Read and combine all meshes of specific quantity into one piece
+	!		2. Write the specific quantity into file
 	!
     !#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-##-#-#-#-#-#-#-#-#-#-##-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
     
     ! Task 1: Input Dimension of IX,IY,IZ
     
     
-        allocate(time(time_dim))
+     allocate(time(time_dim))
     
 	Auto_List: DO JJ=1, n_auto_slices
 	
@@ -456,15 +575,15 @@ implicit none
     	
     	nm=slcf_mesh(I)
         m=>mesh(nm)
-!        allocate(q(0:m%ibar,0:m%jbar,0:m%kbar,nv))
-        allocate(f(0:m%ibar,0:m%jbar,0:m%kbar))
-        if ( JJ .eq. 1) then
-        endif
+        allocate(f(0:m%ibar,0:m%jbar,0:m%kbar),stat=allerr)
+        if (allerr .ne. 0) then
+			write(*,*) " Error! variable f not allocated "
+			write(*,*) "At iteration:", JJ
+			stop
+		endif
+        
         f = 0.
-!        q = 0.
     	
-    	
-        IS(MV) = I
         QFILE = SLCF_FILE(I)	
         
         OPEN(12,FILE=QFILE,FORM='UNFORMATTED',STATUS='OLD')
@@ -472,50 +591,96 @@ implicit none
         READ(12)
         READ(12)
         READ(12) I1,I2,J1,J2,K1,K2                     
+        select case(stationID)
+        case(1) ! Y-Z
+        cqx(ix1(JJ):ix2(JJ))=x1(I)
+        cqy(iy1(JJ):iy2(JJ))=m%y(J1:j2)
+        cqz(iz1(JJ):iz2(JJ))=m%z(k1:k2)
+        case(2) ! X-Z
+        cqx(ix1(JJ):ix2(JJ))=m%x(I1:I2)
+        cqy(iy1(JJ):iy2(JJ))=y1(I)
+        cqz(iz1(JJ):iz2(JJ))=m%z(k1:k2)
+        case(3) ! X-Y
+        cqx(ix1(JJ):ix2(JJ))=m%x(I1:I2)
+        cqy(iy1(JJ):iy2(JJ))=m%y(J1:j2)
+        cqz(iz1(JJ):iz2(JJ))=z1(I)
+        end select
         
         ! Read each slcf file with specific variable
-        ncount = 1
+        ncount = 0
         t1=ncount
     
         Read_loop: do
             read(12,end=99) time(ncount)
             read(12,end=99) (((f(i,j,k),i=i1,i2),j=j1,j2),k=k1,k2)
-            t2=ncount ! indicating T_end
-            print *
-            write(*,*) " Successfully reading file :", trim(qfile)
-            print *
-            write(*,*) "quantity index:"
-            write(*,'(3(I3,A,I3,2X))') ix1(JJ),":",ix2(JJ),iy1(JJ),":",iy2(JJ),iz1(JJ),":",iz2(JJ)
-            print *
-            write(*,*) "f index:"
-            write(*,'(3(I3,A,I3,2X))') i1,":",i2,j1,":",j2,k1,":",k2
-            print *
+            if (ncount .eq. 0) then
+                print *
+                write(*,*) " Reading file :", trim(qfile)
+                write(*,'(3X,A,3(3X,I3,A,I3))') "Quantity index:",ix1(JJ),":",ix2(JJ),iy1(JJ),":",iy2(JJ),iz1(JJ),":",iz2(JJ)
+                write(*,'(3X,A,3(3X,I3,A,I3))') "f index:",i1,":",i2,j1,":",j2,k1,":",k2
+            endif
             quantity(ix1(JJ):ix2(JJ),iy1(JJ):iy2(JJ),iz1(JJ):iz2(JJ),ncount) = f(i1:i2,j1:j2,k1:k2)
+!            quantity(i1:i2,j1:j2,k1:k2,ncount) = f(i1:i2,j1:j2,k1:k2)
             if (ncount .ge. time_dim) then
-                write(*,"(A,I4,A)") " *** Fatal error: preset time_dim = ",time_dim," is smaller than needed."
-                write(*,"(A,f7.2)") " *** Try enlarge the parameter time_dim. Current time is: ",time(ncount)
-                write(*,"(A,I4)") " *** Current iteration reaches: ",ncount
+				print *
+                write(*,'(A,I4,A)') " *** Fatal error: default time_dim = ",time_dim," is smaller than needed."
+                write(*,'(A,f7.2)') " *** Try enlarge the parameter time_dim. Current time is: ",time(ncount)
+                write(*,'(A,I4)') " *** Current iteration reaches: ",ncount
                 stop
             endif
             ncount = ncount + 1
-            
-            deallocate(f)
-            
+            t2=ncount
         enddo Read_loop 
-        write(*,*) "End read_loop"
-        
         99  close(12)
-    
+        deallocate(f)
     
     enddo Auto_list
+		
+		write(*,*) "Total time step is:", t2
     
+    ! --------------------------------------------------------------------------
+    ! Task 2: Write quantity into output file in both binary and ASCII format.
+    ! --------------------------------------------------------------------------
     
+    i_sample=100
+    print * 
+    ext1='.csv'
+    ext2='.bin'
+    write(*,*) "Enter output directory: (default is current folder)"
+    read(lu_in,'(A)') outfile
+		
+		call nospace(auto_slice_label,nonspace)
+    outfile1=trim(outfile)//trim(chid)//'_'//trim(nonspace)//trim(ext1)
+    outfile2=trim(outfile)//trim(chid)//'_'//trim(nonspace)//trim(ext2)
     
+    open(44,file=outfile1,form='formatted',status='replace')
     
+	frmt="(1x,4(a,','),a)"
+    write(44,frmt) 'x','y','z','T',trim(AUTO_SLICE_LABEL)
+    write(44,frmt) 'm','m','m','s',trim(auto_slice_unit)
+    frmt="(4(e12.5,','),e12.5)"
+    write(6,*) ' Writing ASCII data to file :',trim(outfile1)
+    do nt=t1,t2,i_sample ! write sample output
+		do k=nqz1,nqz2
+			do j=nqy1,nqy2
+				do i=nqx1,nqx2
+					write(44,frmt) cqx(i),cqy(j), cqz(k), time(nt), quantity(i,j,k,nt)
+	 			enddo
+			enddo
+		enddo
+    enddo
     
+    close(44)
     
+    open(55,file=outfile2,form='unformatted', status='replace')
+    write(6,*) ' Writing binary data to file :',trim(outfile2)
+    write(55) nqx1,nqx2,nqy1,nqy2,nqz1,nqz2,t1,t2
     
+		write(55) ((((quantity(i,j,k,nt),i=nqx1,nqx2),j=nqy1,nqy2),k=nqz1,nqz2),nt=t1,t2)
     
+    close(55)
+    
+    stop
     
 End Program FDS2SLCF
 
@@ -649,3 +814,23 @@ subroutine toupper(bufferin, bufferout)
     end do
 
 end subroutine toupper
+
+! ********************* nospace ********************************
+
+subroutine nospace(str_in, str_out)
+character(256) :: str_in, str_out, temp
+character(1) :: space = ' '
+integer :: ilen,i
+logical :: iffind
+
+temp=adjustl(str_in)
+ilen=len_trim(temp)
+do  i=1,ilen
+	if(temp(i:i) .eq. ' ') then
+	temp(i:i)='-'
+	endif
+enddo
+str_out=temp
+return 
+
+end subroutine nospace
