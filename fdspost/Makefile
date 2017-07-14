@@ -26,7 +26,7 @@ no_target:
 # ------------- gnu linux 64 ----------------
 #  64 bit gcc linux
 
-gnu_linux_64 : FFLAGS    = -O0 -m64 -ffree-form -frecord-marker=4  $(GITINFOGNU)
+gnu_linux_64 : FFLAGS    = -O0 -m64 -ffree-form -frecord-marker=4  
 gnu_linux_64 : FC        = gfortran
 gnu_linux_64 : exe       = $(BIN)/$(target)
 
