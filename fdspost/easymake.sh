@@ -1,5 +1,5 @@
 #!/bin/sh
-make intel_linux_64
+make gnu_linux_64
 rm -rf ~/intel
 
 batchrun=1
