@@ -1,0 +1,4 @@
+&quantity
+infilename='test1.txt'
+outfilename='test2.txt'
+/

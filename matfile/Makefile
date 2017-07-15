@@ -3,42 +3,29 @@
 # -------------------------------------------------------
 # System PATH variables
 
-MATLAB=/opt/MATLAB/R2016a
+MATLAB=/opt/MATLAB/R2017a
 includedir=$(MATLAB)/extern/include
 
 srcdir = src
 target = matdemo1
 bindir =bin
-
-
-
-# Definition of the OBJCTSect variables
-
 OBJCTS = $(srcdir)/$(target).o
 
-#*** General Purpose Rules ***
-
-.SUFFIXES: .F90 .c .o .f90 .cpp .f
-
-.F90.o:
-	$(FC) -c -o $@ $(FFLAGS) $<
-.f90.o:
-	$(FC) -c -o $@ $(FFLAGS) $<
-.f.o:
-	$(FC) -c -o $@ $(FFLAGS) $<
+FC=ifort
+FFLAGS=  -O2 -m64 -fpp
+INCLDS=-I$(includedir)
+LIBS=-lmat -lmx -L$(MATLAB)/bin/glnxa64 
+TARGS=$(bindir)/$(target)
 
 
 # ------------- Linux 64 ----------------
 #  64 bit linux
 
 
-intel_linux_64 : FFLAGS= -I$(includedir) -O2 -m64 -fpp
-intel_linux_64 : LIBS=-L$(MATLAB)/bin/glnxa64 -lmat -lmx
-intel_linux_64 : FC        = ifort
-intel_linux_64 : exe       = $(bindir)/$(target)
 
-intel_linux_64 : $(OBJCTS)
-	$(FC) -o $(exe) $(FFLAGS) $(OBJCTS) $(LIBS)
+all : $(OBJCTS)
+	$(FC) -o $(TARGS) $(FFLAGS) $(OBJCTS) $(INCLDS) $(LIBS) 
+
 
 #-------------- Clean Target to remove OBJCTSect and Module files -----------
 
@@ -47,4 +34,17 @@ clean:
 	rm $(OBJCTS)
 
  
+#*** General Purpose Rules ***
+
+.SUFFIXES: .F90 .c .o .f90 .cpp .f .F
+
+.F90.o:
+	$(FC) -c -o $@ $(FFLAGS) $(INCLDS) $<
+.f90.o:
+	$(FC) -c -o $@ $(FFLAGS) $(INCLDS) $<
+.f.o:
+	$(FC) -c -o $@ $(FFLAGS) $(INCLDS) $<
+.F.o:
+	$(FC) -c -o $@ $(FFLAGS) $(INCLDS) $<
+
  

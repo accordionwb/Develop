@@ -1,5 +1,5 @@
-#!/bin/sh
-make gnu_linux_64
+#!/bin/bash
+make intel_linux_64
 rm -rf ~/intel
 
 batchrun=1
@@ -55,9 +55,9 @@ fi
 sel_plate=3
 provide_offset='y'
 
-let xoffset=-60
-let yoffset=-60
-let zoffset=0
+xoffset=-60
+yoffset=-60
+zoffset=0
 cd $Workdir
 
 for sel_quantity in {2,3,4}
@@ -97,9 +97,9 @@ do
   chid=$folder
   sel_plate=3
   provide_offset='y'
-  let xoffset=-60
-  let yoffset=-60
-  let zoffset=0
+   xoffset=-60
+   yoffset=-60
+   zoffset=0
   cd $workingdir
   for sel_quantity in {1..5}
   do
