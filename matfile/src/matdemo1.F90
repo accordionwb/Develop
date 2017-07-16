@@ -34,10 +34,14 @@ program matdemo1
    double precision dat(12)
    data dat / 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0 /
 
-   mwSize M, N
-   parameter(M=3) 
-   parameter(N=4) 
+   mwSize M1, N1, M2, N2
+   parameter(M1=3) 
+   parameter(M2=6) 
+   parameter(N1=4) 
+   parameter(N2=2) 
 
+   ! mwSize Data type test
+   write(*,*) "mxSize variables :: M1,N2: ",M1,N1
 
    !  Open MAT-file for writing
 
@@ -51,14 +55,21 @@ program matdemo1
 
    ! Create variables
 
-   pa0 = mxCreateDoubleMatrix(M,N,0)  ! Complex flag .false. = 0, Empty matrix
-   call mxCopyReal8ToPtr(dat, mxGetPr(pa0), M*N)
+   pa0 = mxCreateDoubleMatrix(M1,N1,0)  ! Complex flag .false. = 0, Empty matrix
+   call mxCopyReal8ToPtr(dat, mxGetPr(pa0), M1*N1)
 
-   pa1 = mxCreateDoubleMatrix(2,6,0)  ! Create Empty matrix
+   pa1 = mxCreateDoubleMatrix(M2,N2,0)  ! Create Empty matrix
 
    pa2 = mxCreateString('MATLAB: The language of computing')
 
    pa3 = mxCreateString('MATLAB: The language of computing')
+
+   stat = matPutVariableAsGlobal(mp, 'Numeric', pa1)
+   if (stat .ne. 0) then
+      write(6,*) 'matPutVariable ''Numeric'' failed'
+      stop
+   end if
+   write(6,*) 'matPutVariable ''Numeric'' succeeded'
 
    stat = matPutVariableAsGlobal(mp, 'NumericGlobal', pa0) 
    if (stat .ne. 0) then
@@ -67,26 +78,19 @@ program matdemo1
    end if
    write(*,*) 'matPutVariableAsGlobal ''Numeric Global'' succeeded'
 
-!   stat = matPutVariable(mp, 'Numeric', pa1)
-!   if (stat .ne. 0) then
-!      write(6,*) 'matPutVariable ''Numeric'' failed'
-!      stop
-!   end if
-!      write(6,*) 'matPutVariable ''Numeric'' succeeded'
-
    stat = matPutVariable(mp, 'String', pa2)
    if (stat .ne. 0) then
       write(6,*) 'matPutVariable ''String'' failed'
       stop
    end if
-      write(6,*) 'matPutVariable ''String'' succeeded'
+   write(6,*) 'matPutVariable ''String'' succeeded'
 
    stat = matPutVariable(mp, 'String2', pa3)
    if (stat .ne. 0) then
       write(6,*) 'matPutVariable ''String2'' failed'
       stop
    end if
-      write(6,*) 'matPutVariable ''String2'' succeeded'
+   write(6,*) 'matPutVariable ''String2'' succeeded'
 
    !
    !     Whoops! Forgot to copy the data into the first matrix -- 
@@ -94,13 +98,13 @@ program matdemo1
    !     demonstrates that matPutVariable will overwrite existing 
    !     matrices.
    !
-   call mxCopyReal8ToPtr(dat, mxGetPr(pa1), 2*6)
+   call mxCopyReal8ToPtr(dat, mxGetPr(pa1), M2*N2)
    stat = matPutVariable(mp, 'Numeric', pa1)
    if (stat .ne. 0) then
       write(6,*) 'matPutVariable ''Numeric'' failed 2nd time'
       stop
    end if
-      write(6,*) 'matPutVariable ''Numeric'' succeeded 2nd time'
+   write(6,*) 'matPutVariable ''Numeric'' succeeded 2nd time'
 
    !
    !     We will delete String2 from the MAT-file.
@@ -110,7 +114,7 @@ program matdemo1
       write(6,*) 'matDeleteVariable ''String2'' failed'
       stop
    end if
-      write(6,*) 'matDeleteVariable ''String2'' succeeded'
+   write(6,*) 'matDeleteVariable ''String2'' succeeded'
    !     
    !     Finally, read back in MAT-file to make sure we know what we put
    !     in it.
@@ -120,7 +124,7 @@ program matdemo1
       write(6,*) 'Error closing MAT-file'
       stop
    end if
-      write(6,*) 'Succeeded closing MAT-file'
+   write(6,*) 'Succeeded closing MAT-file'
    !
    mp = matOpen('matdemo.mat', 'r')
    if (mp .eq. 0) then
@@ -133,13 +137,13 @@ program matdemo1
       write(6,*) 'Invalid non-global matrix written to MAT-file'
       stop
    end if
-   
+
    pa1 = matGetVariable(mp, 'Numeric')
    if (mxIsNumeric(pa1) .eq. 0) then
       write(6,*) 'Invalid non-numeric matrix written to MAT-file'
       stop
    end if
-   
+
 
    pa2 = matGetVariable(mp, 'String')
 
@@ -147,13 +151,13 @@ program matdemo1
       write(6,*) 'Invalid non-string matrix written to MAT-file'
       stop
    end if
-   
+
    pa3 = matGetVariable(mp, 'String2')
    if (pa3 .ne. 0) then
       write(6,*) 'String2 not deleted from MAT-file'
       stop
    end if
-   
+
    !     clean up memory
    call mxDestroyArray(pa0)
    call mxDestroyArray(pa1)
@@ -165,7 +169,7 @@ program matdemo1
       write(6,*) 'Error closing MAT-file'
       stop
    end if
-   
+
    write(6,*) 'Done creating MAT-file'
    stop
    end

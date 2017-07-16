@@ -3,6 +3,7 @@
 # -------------------------------------------------------
 # System PATH variables
 
+
 MATLAB=/opt/MATLAB/R2017a
 includedir=$(MATLAB)/extern/include
 
@@ -32,6 +33,7 @@ all : $(OBJCTS)
 .PHONY : clean
 clean:
 	rm $(OBJCTS)
+	rm *.mat
 
  
 #*** General Purpose Rules ***
