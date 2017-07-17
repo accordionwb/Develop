@@ -6,6 +6,7 @@ batchrun=1
 binary=fds2slcf
 single=1
 
+Dspace=1.
 
 # This file try to make fdspost usage easier
 # fdspost input explanation:
@@ -44,10 +45,10 @@ single=1
 #------------------------------------------
 
 if [ $single -eq 1 ] ; then
-CHID='Spectra_001'
+CHID='Spectra_085'
 
-Workdir="/home/wangbing/fdsout/$CHID"
-outdir='/home/wangbing/fdsout/test001/' # Must end with '/'
+Workdir="/home/fdsout/Spectra/$CHID"
+outdir="/home/wangbing/fdscov/$CHID/" # Must end with '/'
 if ! test -d $outdir  ; then
   mkdir -p $outdir
 fi
@@ -60,7 +61,7 @@ yoffset=-60
 zoffset=0
 cd $Workdir
 
-for sel_quantity in {2,3,4}
+for sel_quantity in {1..5}
 do
 # Execute program
 
@@ -70,7 +71,7 @@ $CHID
 $sel_quantity
 $sel_plate
 $provide_offset
-$xoffset  $yoffset  $zoffset
+$xoffset  $yoffset  $zoffset $Dspace
 $outdir
 ieof
 else

@@ -1,14 +1,17 @@
 # This program build fortran source code to generate MATLAB '.mat' file 
 # Functions defined in matlab should be included
 # -------------------------------------------------------
+#
 # System PATH variables
-
-
+#
 MATLAB=/opt/MATLAB/R2017a
 includedir=$(MATLAB)/extern/include
+#
+# User specific target
+target = fds2mat
+#
 
 srcdir = src
-target = matdemo1
 bindir =bin
 OBJCTS = $(srcdir)/$(target).o
 
@@ -33,7 +36,6 @@ all : $(OBJCTS)
 .PHONY : clean
 clean:
 	rm $(OBJCTS)
-	rm *.mat
 
  
 #*** General Purpose Rules ***

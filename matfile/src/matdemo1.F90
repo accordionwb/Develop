@@ -64,7 +64,7 @@ program matdemo1
 
    pa3 = mxCreateString('MATLAB: The language of computing')
 
-   stat = matPutVariableAsGlobal(mp, 'Numeric', pa1)
+   stat = matPutVariable(mp, 'Numeric', pa1)
    if (stat .ne. 0) then
       write(6,*) 'matPutVariable ''Numeric'' failed'
       stop

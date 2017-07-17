@@ -32,7 +32,8 @@ Program FDS2SLCF
    character(256) :: auto_slice_label,auto_slice_unit
    integer :: auto_slice_flag, n_auto_slices, iauto, iztemp
    integer, dimension(1) :: izmin1,ixmin1,iymin1
-   integer :: izmin,ixmin,iymin,ixoff,iyoff,izoff
+   integer :: izmin,ixmin,iymin
+   real(fb):: ixoff,iyoff,izoff,Dspace
    integer, dimension(file_dim) :: auto_slice_lists,temp_slice_lists
    real(fb), dimension(file_dim) :: auto_slice_z,auto_slice_y,auto_slice_x
    real(fb) :: ax1, ay1, az1, az2
@@ -104,6 +105,7 @@ Program FDS2SLCF
    !        open(lu_in,file=filein,status='old',form='formatted')
    !    end if
 
+   write(*,*) "======================= Program Start =========================="
    print *
    write(*,*) ' Enter job id string (chid):'
 
@@ -437,13 +439,13 @@ Program FDS2SLCF
    allocate(iz1(n_auto_slices))
    allocate(iz2(n_auto_slices))
 
-   print *	
+   print *
    write(*,*) "Need to adjust the coordinates offset? (y/n)"
    read(*,*) seq
 
    if (seq .eq. 'y' .or. seq .eq. 'Y') then
-      write(*,*) "Provide approprate coordinates offset (xoff,yoff,zoff)"
-      read(*,*) ixoff,iyoff,izoff
+      write(*,*) "Provide approprate coordinates offset (xoff,yoff,zoff) and Dspace"
+      read(*,*) ixoff,iyoff,izoff,Dspace
       print *
       write(*,*) "----New mesh coordinates after adjustment----"
 
@@ -461,10 +463,10 @@ Program FDS2SLCF
                   exit
                end if
             end do
-            iy1(J)=int(y1(I))-iyoff
-            iy2(J)=int(y2(I))-iyoff
-            iz1(J)=int(z1(I))-izoff
-            iz2(J)=int(z2(I))-izoff
+            iy1(J)=int((y1(I)-iyoff)/Dspace)
+            iy2(J)=int((y2(I)-iyoff)/Dspace)
+            iz1(J)=int((z1(I)-izoff)/Dspace)
+            iz2(J)=int((z2(I)-izoff)/Dspace)
             write(6,'(A,I3,A,I3,5(a,f8.3))')"Seq:",J,", Mesh:",slcf_mesh(I),", ymin=",y1(I),", ymax=",y2(I),", zmin=",z1(I),", zmax=",z2(I),", x=",x1(I)
             write(6,'(3(3X,A,I3,2X,I3))') "The mesh size on each axis is: IX =",ix1(j),ix2(j),", IY=",iy1(j),iy2(j),", IZ=",iz1(j),iz2(J)
             if (J .eq. 1) then
@@ -490,8 +492,8 @@ Program FDS2SLCF
       case(2)
          do J=1,n_auto_slices
             I=auto_slice_lists(J)
-            ix1(J)=int(x1(I))-ixoff
-            ix2(J)=int(x2(I))-ixoff
+            ix1(J)=int((x1(I)-ixoff)/Dspace)
+            ix2(J)=int((x2(I)-ixoff)/Dspace)
             do kk=1,niy
                if (abs(ytemp(kk)-y1(I)) .lt. eps) then
                   iy1(J)=kk;
@@ -499,8 +501,8 @@ Program FDS2SLCF
                   exit
                end if
             end do
-            iz1(J)=int(z1(I))-izoff
-            iz2(J)=int(z2(I))-izoff
+            iz1(J)=int((z1(I)-izoff)/Dspace)
+            iz2(J)=int((z2(I)-izoff)/Dspace)
             write(6,'(A,I3,A,I3,5(a,f8.3))')"Seq:",J,", Mesh:",slcf_mesh(I),", xmin=",x1(I),", xmax=",x2(I),", zmin=",z1(I),", zmax=",z2(I),", y=",y1(I)
             write(6,'(3(3X,A,I3,2X,I3))') "The mesh size on each axis is: IX =",ix1(j),ix2(j),", IY=",iy1(j),iy2(j),", IZ=",iz1(j),iz2(J)
             if (J .eq. 1) then
@@ -527,10 +529,10 @@ Program FDS2SLCF
 
          do J=1,n_auto_slices
             I=auto_slice_lists(J)
-            ix1(J)=int(x1(I))-ixoff
-            ix2(J)=int(x2(I))-ixoff
-            iy1(J)=int(y1(I))-iyoff
-            iy2(J)=int(y2(I))-iyoff
+            ix1(J)=int((x1(I)-ixoff)/Dspace)
+            ix2(J)=int((x2(I)-ixoff)/Dspace)
+            iy1(J)=int((y1(I)-iyoff)/Dspace)
+            iy2(J)=int((y2(I)-iyoff)/Dspace)
             do kk=1,niz
                if (abs(ztemp(kk)-z1(I)) .lt. eps) then
                   iz1(J)=kk;
@@ -663,7 +665,7 @@ Program FDS2SLCF
    read(*,'(A)') outfile
 
    call nospace(auto_slice_label,nonspace)
-   outfile1=trim(outfile)//trim(chid)//'_'//trim(nonspace)//trim(ext1)
+   outfile1=trim(outfile)//trim(chid)//'_sample_'//trim(nonspace)//trim(ext1)
    outfile2=trim(outfile)//trim(chid)//'_'//trim(nonspace)//trim(ext2)
 
    open(44,file=outfile1,form='formatted',status='replace')
@@ -672,7 +674,7 @@ Program FDS2SLCF
    write(44,frmt) 'x','y','z','T',trim(AUTO_SLICE_LABEL)
    write(44,frmt) 'm','m','m','s',trim(auto_slice_unit)
    frmt="(4(e12.5,','),e12.5)"
-   write(6,*) ' Writing ASCII sample data to file :',trim(outfile1)
+   write(6,*) 'Writing ASCII sample data to file :',trim(outfile1)
    do nt=t1,t2,i_sample ! write sample output
       do k=nqz1,nqz2
          do j=nqy1,nqy2
@@ -706,6 +708,9 @@ Program FDS2SLCF
    write(55) ((((quantity(i,j,k,nt),i=nqx1,nqx2),j=nqy1,nqy2),k=nqz1,nqz2),nt=t1,t2)
 
    close(55)
+
+   write(*,*) "---------------------- Program end normally -----------------------"
+   print*
 
    stop
 

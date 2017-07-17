@@ -1,0 +1,16 @@
+&quantity
+infilename='/home/wangbing/fdscov/Spectra_085/Spectra_085_U-VELOCITY.bin'
+outfilename='/home/wangbing/fdscov/Spectra_085/VELOCITY.mat'
+/
+&quantity
+infilename='/home/wangbing/fdscov/Spectra_085/Spectra_085_V-VELOCITY.bin'
+outfilename='/home/wangbing/fdscov/Spectra_085/VELOCITY.mat'
+/
+&quantity
+infilename='/home/wangbing/fdscov/Spectra_085/Spectra_085_W-VELOCITY.bin'
+outfilename='/home/wangbing/fdscov/Spectra_085/VELOCITY.mat'
+/
+&quantity
+infilename='/home/wangbing/fdscov/Spectra_085/Spectra_085_VELOCITY.bin'
+outfilename='/home/wangbing/fdscov/Spectra_085/VELOCITY.mat'
+/
