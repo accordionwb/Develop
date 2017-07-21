@@ -84,10 +84,10 @@ Program fds2mat
    print*, "Start to executing the program fds2mat"
 
    ! Read namelist file
-   write(*,*) "Enter the input file name: "
+   write(*,*) "Enter the input file name for current folder or full path :"
    read(*,'(A)')  infilename 
    print *
-   write(*,*) "Enter the output file name:"
+   write(*,*) "Enter the output file name for current folder or full path :"
    read(*,'(A)') outfilename
 
    ! Read input data file
@@ -166,8 +166,8 @@ Program fds2mat
    if (mpfile == 0) then
       print*
       write(*,*) "Can't open: ",trim(outfilename)
-      write(*,*) "  file may not exist, Try creating one with write purpose"
-      mpfile = matOpen(outfilename, 'w')
+      write(*,*) "  file may not exist, Try creating one with write access (v7.3 default)"
+      mpfile = matOpen(outfilename, 'w7.3')
       if (mpfile == 0 ) then
          print*
          write(*,*) "Can''t open ",trim(outfilename), "directory may not accessable"
