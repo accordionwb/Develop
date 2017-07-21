@@ -14,7 +14,7 @@ make
 #
 # Part of I/O file name variables
 #
-instoredir=/home/wangbing/fdscov
+instoredir=/home/wangbing/Public
 allruns=`ls $instoredir`
 outstoredir=/home/wangbing/fdscov
 
@@ -22,7 +22,7 @@ for run in $allruns
 do
    allfiles=`ls $instoredir/$run/*.bin`
    CHID=$run
-   outfilename=$outstoredir/$run/$CHID.mat
+   outfilename=$outstoredir/$CHID.mat
    for file in $allfiles
    do
       infilename=$file
