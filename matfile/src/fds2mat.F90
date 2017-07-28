@@ -14,13 +14,14 @@ Program fds2mat
    integer ::  infileid, outfileid
    integer :: nmlstat, infilestat, outfilestat
    integer :: nx, ny, nz, nt
-   logical :: lwtime, lwquan
+   logical :: lwtime, lwquan, lwdims
 
    character(255) :: varname, varunit, regularname
    integer:: tdim1,tdim2
    integer:: xdim1,xdim2,ydim1,ydim2,zdim1,zdim2
    integer:: i,j,k,l
    integer*8:: ii
+   integer*4, dimension(4) :: dims
    real(fb), allocatable, dimension(:):: time
    real(fb), allocatable, dimension(:):: xcor,ycor,zcor
    real(fb), allocatable, dimension(:,:,:,:):: quan
@@ -35,19 +36,22 @@ Program fds2mat
    mwPointer matGetVariable
 
    mwPointer mpfile  ! file handle
-   mwPointer ptime, pquan  !var handle
+   mwPointer ptime, pquan, pdims  !var handle
 
-   mwSize mndim,mlength,mtdim       ! integer*8 type
+   mwSize mndim,mlength,mtdim, mddim      ! integer*8 type
    parameter (mndim=4)  ! dimension of quantity
-   parameter(mtdim=1)
+   parameter (mtdim=1)
+   parameter (mddim=1)
    mwSize mdims(mndim)
    mwSize mtlen(mtdim)
+   mwSize mdlen(mddim)
 
    integer mstat, matClose, mxIsFromGlobalWS
    integer*4 matPutVariable, matPutVariableAsGlobal, matDeleteVariable
-   integer*4 classid, complexflag
-   integer*4 mxClassIDFromClassName
-   character*(32) :: classname='single'
+   integer*4 classid1, classid2, complexflag
+   integer*4 mxclassidFromclassname
+   character*(32) :: realname='single'
+   character*(8) :: intname='int32'
 
 
    ! Open fds2slcf output binary file
@@ -129,7 +133,7 @@ Program fds2mat
 
    99 close(infileid)
 
-   ! Reshape 4-D quan to 1-d quanline
+   ! Reshape 4-D quan to 1-d quanline by colume (Fortran style)
    allocate(quanline(1:size(quan)))
    ii=1
    do l=1,nt
@@ -176,7 +180,7 @@ Program fds2mat
       end if
    end if
 
-   ! Check time field
+   ! Check time and other variable field
    ptime = matGetVariable(mpfile, 'time')
    if (ptime == 0 ) then
       print*
@@ -185,6 +189,16 @@ Program fds2mat
    else 
       write(*,*) "'Time' field exists, skip..."
       lwtime = .false.
+   endif
+
+   pdims = matGetVariable(mpfile, 'dims')
+   if (pdims == 0 ) then
+      print*
+      write(*,*) "'Dims' field doesn't exist, writing..."
+      lwdims = .true.
+   else 
+      write(*,*) "'Dims' field exists, skip..."
+      lwdims = .false.
    endif
 
    call namecheck(varname, regularname)  ! varname check 
@@ -200,7 +214,8 @@ Program fds2mat
    end if
 
    ! Prepare dimension for MATLAB variable creation 
-   classid=mxClassIDFromClassName(classname)
+   classid1=mxclassidFromclassname(realname)
+   classid2=mxclassidFromclassname(intname)
    complexflag=0
 
    ! define some dimensions
@@ -210,14 +225,20 @@ Program fds2mat
    mdims(4)=nt
    mlength=nx*ny*nz*nt
 
+   dims(1)=nx
+   dims(2)=ny
+   dims(3)=nz
+   dims(4)=nt
+
    mtlen=nt
+   mdlen=4
 
    ! Create MATLAB object variables with point and transfer fortran values to them
    print*
 
-
+   ! Write time field
    if (lwtime) then
-      ptime = mxCreateNumericArray(mtdim,mtlen,classid,complexflag)
+      ptime = mxCreateNumericArray(mtdim,mtlen,classid1,complexflag)
       call mxCopyReal4ToPtr(time, mxGetData(ptime), mtlen)
       mstat = matPutVariable(mpfile, 'time', ptime)  ! Variable name must not have '-', '='
       write(*,*) "Writing NumericArray 'time'"
@@ -228,9 +249,22 @@ Program fds2mat
       write(*,*)  "...Action matPutVariable 'time' succeeded"
    endif
 
-   ! Write Values to matfile pointed by mpfile
+   ! Write dimension fields
+   if (lwdims) then
+      pdims = mxCreateNumericArray(mddim,mdlen,classid2,complexflag)
+      call mxCopyInteger4ToPtr(dims, mxGetData(pdims), mdlen)
+      mstat = matPutVariable(mpfile, 'dims', pdims)  ! Variable name must not have '-', '='
+      write(*,*) "Writing NumericArray 'dims'"
+      if (mstat /= 0) then
+         write(*,*) "***Error in matPutVariable 'dims'"
+         goto 1000 ! Stop the program
+      endif
+      write(*,*)  "...Action matPutVariable 'dims' succeeded"
+   endif
+
+   ! Write Quantity fields
    if (lwquan) then
-      pquan = mxCreateNumericArray(mndim,mdims,classid,complexflag)
+      pquan = mxCreateNumericArray(mndim,mdims,classid1,complexflag)
       call mxCopyReal4ToPtr(quanline, mxGetData(pquan), mlength)
       mstat = matPutVariable(mpfile, trim(regularname), pquan)  
       write(*,*) "Writing NumericArray '",trim(regularname),"'"

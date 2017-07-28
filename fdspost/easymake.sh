@@ -45,10 +45,10 @@ Dspace=1.
 #------------------------------------------
 
 if [ $single -eq 1 ] ; then
-CHID='Facility_055'
+CHID='Facility_008'
 
-Workdir="/home/wangbing/fdsrun/$CHID"
-outdir="/home/wangbing/Public/$CHID/" # Must end with '/'
+Workdir="/disk/fdsrun/Facility/$CHID"
+outdir="/tmp/fdscov/$CHID/" # Must end with '/'
 if ! test -d $outdir  ; then
   mkdir -p $outdir
 fi
