@@ -20,7 +20,7 @@
 #
 #  2.Define case coverage:
 #       single=1 -> execute fds2slcf on specific run-case directory.
-#       single=0 -> execute fds2slcf on whole run-case repository covering all cases
+#       single=0 -> execute fds2slcf on whole run-case sourcediritory covering all cases
 #
 #  3.Define I/O directory
 #
@@ -45,13 +45,18 @@
 debugrun=0  # 1=debug run | 0 no debug
 exe1=fds2slcf
 exe2=fds2mat
-single=0  # 1=single run | 0 = batch run
-CHID="Spectra_085"
+single=1  # 1=single run | 0 = batch run
+
+if test -z $1 ; then
+CHID="Facility_025"
+else
+    CHID=$1
+fi
 
 
-repos="/home/fdsout/Spectra"
-tmpdir="/tmp/fdsmisc"
-outrepo="/home/wangbing/fdscov"
+sourcedir="/disk/fdsrun/Facility"
+tmpdir="/disk/work/fdscov"
+destdir="/disk/fdsmat/Facility"
 
 
 sel_plate=3  # 
@@ -117,7 +122,7 @@ fi
 
 if [ $single -eq 1 ] ; then
 
-   Readdir="$repos/$CHID"
+   Readdir="$sourcedir/$CHID"
    bindir="$tmpdir/$CHID/" # Must end with '/'
    if ! test -d $bindir  ; then
       mkdir -p $bindir
@@ -141,7 +146,7 @@ ieof
 done
 
          allfiles=`ls $bindir/*.bin`  # /tmp/fdsmisc/$CHID/*******.bin
-         outfilename=$outrepo/$CHID.mat
+         outfilename=$destdir/$CHID.mat
          for file in $allfiles # infilename 
          do
             infilename=$file
@@ -169,7 +174,7 @@ fi
 
 if [ $single -eq 0 ] ; then  # Batch start
 
-   allcases=`ls $repos`
+   allcases=`ls $sourcedir`
    for cases in $allcases
    do                    # Do loop 01: CASE
       CHID=$cases
@@ -177,7 +182,7 @@ if [ $single -eq 0 ] ; then  # Batch start
       if ! test -d $bindir ; then
          mkdir -p $bindir
       fi
-      readingdir=$repos/$cases
+      readingdir=$sourcedir/$cases
       cd $readingdir
       for each_quan in ${sel_quantity[@]}
       do                 # Do loop 02: Quantity
@@ -195,7 +200,7 @@ ieof
       done    # End do loop 02: quantity
 
       allfiles=`ls $bindir/*.bin`
-      outfilename=$outrepo/$cases.mat
+      outfilename=$destdir/$cases.mat
 
       for file in $allfiles
       do
