@@ -32,13 +32,48 @@
 #     e.g.: sel_quantity={1..5}  (integer number)
 #
 
-single=1  # 1=single run | 0 = batch run
 
+
+# ==================== Input arguement defination ========================
+# 1st parameter: specify the case number in integer
 if test -z $1 ; then
-CHID="Facility_039"
+    echo "--------------------------------------------------------"
+    echo " Usage:"
+    echo "   SLCF2MAT [arg_1] [arg_2] [art_3]"
+    echo "      -arg_1: Start case number"
+    echo "      -arg_2: Rewrite flag (true/false, default)"
+    echo "      -arg_3: End case number (optional)"
+    echo "   Default prefix is 'Facility_'"
+    echo "   Case number should be integer between 1 and 120"
+    echo " "
+    echo " Modify the script to change the input&output path"
+    echo "--------------------------------------------------------"
+    exit
 else 
-    CHID=$1
+    startcase=$1
 fi
+
+# 2nd parameter: If re-write the existing file
+if test -z $2 ; then
+    rewrite=false
+else 
+    rewrite=true
+fi
+
+# 3rd parameter: Indicate the end case in integer
+if test -z $3 ; then
+    endcase=$1
+else
+    endcase=$3
+    if $endcase < $startcase ; then
+        echo "***Error, 1st arg < 3st arg, program exit"
+        exit 
+    fi
+fi
+
+
+
+#================= Parameter Settings =========================
 
 
 sourcedir="/disk/fdsrun/Facility"
@@ -53,33 +88,38 @@ yoffset=-60.
 zoffset=0.
 sel_quantity=(1 2 3 4 5)
 
-# ========================================================================
-#
-# Script pre-check working directorys
-#
+
+#================== Script pre-check working directorys ================
 if ! test -d $destdir ; then
    mkdir -p $destdir
 fi
-#
-# Check Dynamic Library PATH
-#
+
+#================ Check Dynamic Library PATH ============================
 if [ ! `echo $LD_LIBRARY_PATH | grep MATLAB` ] ; then
    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/MATLAB/R2017a/bin/glnxa64
 fi
-#
+
 # Define execute 
 exe=slcf2mat
-#
-# ===================================================================
-#
-#------------------------------------------
-# Script single process
-#------------------------------------------
 
-if [ $single -eq 1 ] ; then
+# ================ Main Loop ================================
+for ((i=$startcase; i<=$endcase; i++))
+do
+
+strcase=`printf "%03d" $i`
+CHID="Facility_"$strcase
 
    Readdir="$sourcedir/$CHID"
 matfile=$destdir/$CHID.mat
+if $rewrite ; then
+    echo "Re-write the existing mat file"
+    if test -e $matfile ; then
+    rm $matfile
+fi
+fi
+echo "*********** Program Start on case $CHID ******************"
+echo " "
+sleep 5
 
    cd $Readdir
 
@@ -97,39 +137,18 @@ $matfile
 ieof
 done
 
-fi
 
-#mail -s "$CHID finished" wangbing_2007@tsinghua.org.cn
-#.
 
-#------------------------------------------
-# Script batch process
-#------------------------------------------
+# Loop output
+echo "=================================================="
+echo "="
+echo "=            Generate $CHID.mat "
+echo "="
+echo "=================================================="
 
-if [ $single -eq 0 ] ; then  # Batch start
-
-   allcases=`ls $sourcedir`
-   for chid in $allcases
-   do                    # Do loop 01: CASE
-      readingdir=$sourcedir/$chid
-      matfile=$destdir/$chid.mat
-
-      cd $readingdir
-
-      for each_quan in ${sel_quantity[@]}
-      do                 # Do loop 02: Quantity
-
-         echo "quantity is $each_quan"
-
-$exe << ieof
-$chid
-$each_quan
-$sel_plate
-$provide_offset
-$xoffset  $yoffset  $zoffset $Dspace
-$matfile
-ieof
-      done
-echo "======= Generate $cases.mat ==============="
 done
-fi
+
+
+#echo . | mail -s "$CHID finished" wangbing_2007@tsinghua.org.cn
+
+
